@@ -9,6 +9,14 @@ import {
   Send, UserCheck, FileText, CheckCircle2, Flame, BookmarkPlus, Edit3, Key, User,
   ShieldCheck, LogIn, Music, Disc3, Radio, UploadCloud, GitBranch, ArrowRight
 } from 'lucide-react';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
+
+// --- SUPABASE CLIENT INITIALIZATION ---
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+const supabase: SupabaseClient | null = (supabaseUrl && supabaseAnonKey) 
+  ? createClient(supabaseUrl, supabaseAnonKey) 
+  : null;
 
 // --- DATA TYPES ---
 type UserRole = 'owner' | 'manager' | 'instructor' | 'assistant';
@@ -120,7 +128,6 @@ interface ChatMessage {
 }
 
 // --- CURATED PRE-BAKED BASELINE LIBRARY ---
-
 const BASELINE_CONCEPTS: string[] = [
   'Closed Guard Dominance (Roger Gracie System)',
   'Half Guard & Chest Camping (Gordon Ryan System)',
@@ -597,11 +604,53 @@ export default function MatApp() {
     }
   });
 
+  // --- SYNC REMOTE PUBLIC LESSONS FROM SUPABASE ON MOUNT ---
+  useEffect(() => {
+    async function fetchRemoteLessons() {
+      if (!supabase) return;
+      try {
+        const { data, error } = await supabase
+          .from('lessons')
+          .select('*')
+          .eq('is_public', true);
+
+        if (!error && data && data.length > 0) {
+          const remotePlans: LessonPlan[] = data.map((item: any) => ({
+            id: item.id,
+            className: item.class_name,
+            concept: item.concept,
+            ageGroup: item.age_group,
+            beltRank: item.belt_rank,
+            totalDurationMinutes: item.total_duration_minutes,
+            tags: item.tags || [],
+            warmUp: item.warm_up,
+            drills: item.drills || [],
+            liveRounds: item.live_rounds,
+            isPublic: item.is_public,
+            authorInstructorId: item.author_id || 'remote-author',
+            authorName: item.author_name || 'Community Academy'
+          }));
+
+          setPlans((prev: LessonPlan[]) => {
+            const existingIds = new Set(prev.map((p) => p.id));
+            const freshItems = remotePlans.filter((item) => !existingIds.has(item.id));
+            return [...freshItems, ...prev];
+          });
+        }
+      } catch (err) {
+        console.warn('Could not fetch remote lessons:', err);
+      }
+    }
+
+    fetchRemoteLessons();
+  }, []);
+
+  // --- AUTO SCROLL CHAT ---
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages, isChatSending]);
 
-  // Force display to remain awake while timer is actively running
+  // --- HARDWARE SCREEN WAKE LOCK (PREVENTS TABLET SLEEP ON MAT) ---
   useEffect(() => {
     let wakeLock: any = null;
 
@@ -629,7 +678,7 @@ export default function MatApp() {
       }
     };
   }, [isActive]);
-  
+
   const handleLocalFilesUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
@@ -1053,8 +1102,34 @@ export default function MatApp() {
       authorInstructorId: currentInstructor.id,
       authorName: currentInstructor.name,
     };
+
+    // Save locally
     setPlans([newPlan, ...plans]);
     loadPlanToMat(newPlan);
+
+    // Save to remote Supabase database if public and configured
+    if (newPlan.isPublic && supabase) {
+      supabase
+        .from('lessons')
+        .insert([{
+          id: newPlan.id,
+          academy_id: '00000000-0000-0000-0000-000000000000',
+          author_name: newPlan.authorName,
+          class_name: newPlan.className,
+          concept: newPlan.concept,
+          age_group: newPlan.ageGroup,
+          belt_rank: newPlan.beltRank,
+          total_duration_minutes: newPlan.totalDurationMinutes,
+          tags: newPlan.tags,
+          warm_up: newPlan.warmUp,
+          drills: newPlan.drills,
+          live_rounds: newPlan.liveRounds,
+          is_public: true
+        }])
+        .then(({ error }: { error: any }) => {
+          if (error) console.warn('Supabase sync error:', error);
+        });
+    }
   };
 
   const handleLoginSubmit = (e: React.FormEvent) => {
@@ -2583,7 +2658,7 @@ export default function MatApp() {
       {/* LOGIN MODAL */}
       {isLoginModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl max-w-sm w-full space-y-4">
+          <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl max-w-sm w-full shadow-2xl space-y-4">
             <h3 className="font-bold text-lg text-white">Log In</h3>
             {loginError && <div className="text-rose-400 text-xs">{loginError}</div>}
             <input type="text" placeholder="Username" value={loginUsername} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setLoginUsername(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-sm text-white" />
