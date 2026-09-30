@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'MatOps - Academy Management',
+  title: "SubCadence — BJJ Academy Operations & Pacing",
   description: 'Class scheduling, curriculum builder, and mat timer HUD.',
   manifest: '/manifest.json',
   appleWebApp: {
