@@ -8,7 +8,7 @@ import {
   Calendar as CalendarIcon, Tag, Search, FolderPlus, X, Loader2, MessageSquare, 
   Send, UserCheck, FileText, CheckCircle2, Flame, BookmarkPlus, Edit3, Key, User,
   ShieldCheck, LogIn, Music, Disc3, Radio, UploadCloud, GitBranch, ArrowRight,
-  ExternalLink
+  ExternalLink, Copy, Check, Menu
 } from 'lucide-react';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
@@ -94,6 +94,7 @@ interface LessonPlan {
   totalDurationMinutes: number;
   tags: string[];
   warmUp: WarmUp;
+  flow?: FlowRoutine | null;
   drills: Drill[];
   liveRounds: {
     roundCount: number;
@@ -134,6 +135,188 @@ interface ChatMessage {
     conceptData?: { conceptName: string } | null;
     lessonData?: any | null;
   };
+}
+
+// --- SEARCHABLE LESSON PICKER WITH QUICK FILTER CHIPS ---
+interface SearchableLessonPickerProps {
+  lessons: LessonPlan[];
+  selectedLessonId: string | null;
+  onSelect: (lessonId: string | null) => void;
+  placeholder?: string;
+}
+
+const PICKER_AGE_GROUPS = ['All Ages', 'Ages 3-6', 'Ages 7-12', 'Adults', 'Masters'];
+const PICKER_BELTS = ['All Belts', 'White Belt', 'Blue Belt', 'Purple Belt +'];
+
+function SearchableLessonPicker({
+  lessons,
+  selectedLessonId,
+  onSelect,
+  placeholder = 'Search lessons...',
+}: SearchableLessonPickerProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedAge, setSelectedAge] = useState('All Ages');
+  const [selectedBelt, setSelectedBelt] = useState('All Belts');
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  const selectedLesson = lessons.find((l) => l.id === selectedLessonId);
+
+  const filtered = lessons.filter((l) => {
+    const matchesSearch =
+      l.className.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      l.concept.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      l.tags.some((t) => t.toLowerCase().includes(searchTerm.toLowerCase()));
+
+    const matchesAge = selectedAge === 'All Ages' || l.ageGroup === selectedAge;
+    const matchesBelt = selectedBelt === 'All Belts' || l.beltRank.includes(selectedBelt.replace(' +', ''));
+
+    return matchesSearch && matchesAge && matchesBelt;
+  });
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const resetFilters = () => {
+    setSearchTerm('');
+    setSelectedAge('All Ages');
+    setSelectedBelt('All Belts');
+  };
+
+  return (
+    <div ref={wrapperRef} className="relative w-full max-w-sm">
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-left flex items-center justify-between gap-2 hover:border-slate-700 transition"
+      >
+        <span className={`truncate font-semibold ${selectedLesson ? 'text-emerald-400' : 'text-slate-400'}`}>
+          {selectedLesson ? `${selectedLesson.className} (${selectedLesson.concept})` : placeholder}
+        </span>
+        <ChevronDown size={14} className="text-slate-500 shrink-0" />
+      </button>
+
+      {isOpen && (
+        <div className="absolute left-0 top-full mt-1.5 w-80 sm:w-96 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl z-50 p-2.5 space-y-2.5">
+          <div className="relative">
+            <Search size={13} className="absolute left-2.5 top-2.5 text-slate-500 pointer-events-none" />
+            <input
+              type="text"
+              autoFocus
+              placeholder="Filter by title, concept, tag..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-7 pr-3 py-1.5 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-emerald-500"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Age Group</div>
+            <div className="flex flex-wrap gap-1">
+              {PICKER_AGE_GROUPS.map((age) => (
+                <button
+                  key={age}
+                  type="button"
+                  onClick={() => setSelectedAge(age)}
+                  className={`px-2 py-0.5 rounded text-[10px] font-bold border transition ${
+                    selectedAge === age
+                      ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50'
+                      : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
+                  }`}
+                >
+                  {age}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Belt Rank</div>
+            <div className="flex flex-wrap gap-1">
+              {PICKER_BELTS.map((belt) => (
+                <button
+                  key={belt}
+                  type="button"
+                  onClick={() => setSelectedBelt(belt)}
+                  className={`px-2 py-0.5 rounded text-[10px] font-bold border transition ${
+                    selectedBelt === belt
+                      ? 'bg-indigo-500/20 text-indigo-400 border-indigo-500/50'
+                      : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
+                  }`}
+                >
+                  {belt}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {(searchTerm || selectedAge !== 'All Ages' || selectedBelt !== 'All Belts') && (
+            <div className="flex justify-between items-center text-[10px] pt-1 border-t border-slate-800/80">
+              <span className="text-slate-400">{filtered.length} matching plans</span>
+              <button
+                type="button"
+                onClick={resetFilters}
+                className="text-amber-400 hover:underline font-semibold"
+              >
+                Reset Filters
+              </button>
+            </div>
+          )}
+
+          <div className="max-h-48 overflow-y-auto space-y-1 divide-y divide-slate-800/40 pt-1">
+            <button
+              type="button"
+              onClick={() => {
+                onSelect(null);
+                setIsOpen(false);
+                resetFilters();
+              }}
+              className="w-full text-left px-2 py-1.5 rounded-lg text-xs text-slate-400 hover:bg-slate-800 hover:text-white transition"
+            >
+              (No Lesson Linked)
+            </button>
+
+            {filtered.length === 0 ? (
+              <div className="p-3 text-center text-xs text-slate-500">No matching lessons found</div>
+            ) : (
+              filtered.map((l) => (
+                <button
+                  key={l.id}
+                  type="button"
+                  onClick={() => {
+                    onSelect(l.id);
+                    setIsOpen(false);
+                    resetFilters();
+                  }}
+                  className={`w-full text-left px-2 py-1.5 rounded-lg text-xs transition flex flex-col ${
+                    selectedLessonId === l.id
+                      ? 'bg-emerald-950/60 text-emerald-300 font-bold'
+                      : 'text-slate-200 hover:bg-slate-800'
+                  }`}
+                >
+                  <span className="truncate">{l.className}</span>
+                  <div className="text-[10px] text-slate-400 truncate flex items-center gap-1.5 mt-0.5">
+                    <span className="text-slate-300">{l.concept}</span>
+                    <span>&bull;</span>
+                    <span className="text-emerald-400/90">{l.ageGroup}</span>
+                    <span>&bull;</span>
+                    <span className="text-indigo-400/90">{l.beltRank}</span>
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 // --- CURATED PRE-BAKED BASELINE LIBRARY ---
@@ -364,6 +547,7 @@ function buildComprehensiveCurriculum(): LessonPlan[] {
           totalDurationMinutes: profile.duration,
           tags: [week.lineage, 'Week ' + week.weekNum, 'Day ' + (dayIdx + 1), profile.ageGroup],
           warmUp: BASELINE_WARMUPS[wuIndex],
+          flow: null,
           drills: [
             {
               id: `${lessonId}-d1`,
@@ -423,6 +607,7 @@ function getMondayOfWeek(d: Date): Date {
 
 export default function MatApp() {
   const [activeTab, setActiveTab] = useState<'mat' | 'builder' | 'community' | 'flows' | 'calendar' | 'chat' | 'academy' | 'profile'>('mat');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [currentInstructor, setCurrentInstructor] = useState<Instructor | null>(INITIAL_INSTRUCTORS_SEED[0]);
   const [instructors, setInstructors] = useState<Instructor[]>(INITIAL_INSTRUCTORS_SEED);
   const [academyName, setAcademyName] = useState('Pacific Training Academy');
@@ -512,6 +697,9 @@ export default function MatApp() {
   const [isChatSending, setIsChatSending] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
+  // --- LESSON BUILDER CONTEXT & PACING STATES ---
+  const [editingLessonId, setEditingLessonId] = useState<string | null>(null);
+  const [targetClassId, setTargetClassId] = useState<string>('');
   const [tagInput, setTagInput] = useState('');
   const [builderForm, setBuilderForm] = useState<Omit<LessonPlan, 'id' | 'authorInstructorId' | 'authorName'>>({
     className: '',
@@ -522,6 +710,7 @@ export default function MatApp() {
     tags: ['Fundamentals', 'No-Gi'],
     isPublic: false,
     warmUp: BASELINE_WARMUPS[0],
+    flow: null,
     drills: [
       {
         id: 'drill-1',
@@ -540,6 +729,18 @@ export default function MatApp() {
       restTimeSeconds: 60,
     }
   });
+
+  // Calculate live pacing time allocation in minutes
+  const warmUpMinutes = Math.round((builderForm.warmUp.roundCount * (builderForm.warmUp.roundTimeSeconds + builderForm.warmUp.restTimeSeconds)) / 60);
+  const flowMinutes = builderForm.flow 
+    ? Math.round((builderForm.flow.roundCount * (builderForm.flow.roundTimeSeconds + builderForm.flow.restTimeSeconds)) / 60)
+    : 0;
+  const drillsMinutes = builderForm.drills.reduce((acc, d) => acc + Math.round((d.roundCount * (d.roundTimeSeconds + d.restTimeSeconds)) / 60), 0);
+  const liveRoundsMinutes = Math.round((builderForm.liveRounds.roundCount * (builderForm.liveRounds.roundTimeSeconds + builderForm.liveRounds.restTimeSeconds)) / 60);
+  const totalPlannedMinutes = warmUpMinutes + flowMinutes + drillsMinutes + liveRoundsMinutes;
+  const targetClass = schedule.find(s => s.id === targetClassId);
+  const targetDuration = targetClass ? targetClass.durationMinutes : builderForm.totalDurationMinutes;
+  const pacingDifference = targetDuration - totalPlannedMinutes;
 
   // --- AUDIO CONTEXT RESILIENCE ---
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -576,7 +777,6 @@ export default function MatApp() {
 
     async function loadAllSupabaseData() {
       try {
-        // 1. Fetch Lessons
         const { data: lessonData } = await supabase!.from('lessons').select('*').eq('is_public', true);
         if (lessonData && lessonData.length > 0) {
           const remotePlans: LessonPlan[] = lessonData.map((item: any) => ({
@@ -588,6 +788,7 @@ export default function MatApp() {
             totalDurationMinutes: item.total_duration_minutes,
             tags: item.tags || [],
             warmUp: item.warm_up,
+            flow: item.flow || null,
             drills: item.drills || [],
             liveRounds: item.live_rounds,
             isPublic: item.is_public,
@@ -601,7 +802,6 @@ export default function MatApp() {
           });
         }
 
-        // 2. Fetch Tactical Flows
         const { data: flowData } = await supabase!.from('flow_routines').select('*');
         if (flowData && flowData.length > 0) {
           const remoteFlows: FlowRoutine[] = flowData.map((f: any) => ({
@@ -622,7 +822,6 @@ export default function MatApp() {
           });
         }
 
-        // 3. Fetch Scheduled Classes
         const { data: scheduleData } = await supabase!.from('schedules').select('*');
         if (scheduleData && scheduleData.length > 0) {
           const remoteSchedule: ScheduledClass[] = scheduleData.map((s: any) => ({
@@ -640,7 +839,6 @@ export default function MatApp() {
           setSchedule(remoteSchedule);
         }
 
-        // 4. Fetch Custom Warm-Up Presets
         const { data: warmupData } = await supabase!.from('warmup_presets').select('*');
         if (warmupData && warmupData.length > 0) {
           const remoteWarmups: WarmUp[] = warmupData.map((w: any) => ({
@@ -761,6 +959,16 @@ export default function MatApp() {
       const audioCtx = getAudioContext();
       if (!audioCtx) return;
 
+      // 1. Duck local music down to 20% during the alarm
+      if (localAudioRef.current && isMusicPlaying) {
+        localAudioRef.current.volume = Math.max(0.05, musicVolume * 0.2);
+        // Restore music volume after 2 seconds
+        setTimeout(() => {
+          if (localAudioRef.current) localAudioRef.current.volume = musicVolume;
+        }, 2200);
+      }
+
+      // 2. Play Web Audio tone
       if (alarmType === 'bell') {
         if (phase === 'start') {
           const osc = audioCtx.createOscillator();
@@ -813,7 +1021,9 @@ export default function MatApp() {
           });
         }
       }
-    } catch {}
+    } catch (err) {
+      console.warn('Audio tone error:', err);
+    }
   };
 
   const currentWarmUp: WarmUp = selectedPlan?.warmUp || BASELINE_WARMUPS[0];
@@ -828,20 +1038,22 @@ export default function MatApp() {
     restTimeSeconds: 30
   };
 
+  const effectiveActiveFlow = selectedPlan?.flow || activeLoadedFlow;
+
   const maxRounds: number = 
-    activeHUDMode === 'flow' && activeLoadedFlow ? activeLoadedFlow.roundCount :
+    activeHUDMode === 'flow' && effectiveActiveFlow ? effectiveActiveFlow.roundCount :
     activeHUDMode === 'warmup' ? currentWarmUp.roundCount :
     activeHUDMode === 'drill' ? currentDrill.roundCount : 
     selectedPlan?.liveRounds?.roundCount || 5;
 
   const workDuration: number = 
-    activeHUDMode === 'flow' && activeLoadedFlow ? activeLoadedFlow.roundTimeSeconds :
+    activeHUDMode === 'flow' && effectiveActiveFlow ? effectiveActiveFlow.roundTimeSeconds :
     activeHUDMode === 'warmup' ? currentWarmUp.roundTimeSeconds :
     activeHUDMode === 'drill' ? currentDrill.roundTimeSeconds : 
     selectedPlan?.liveRounds?.roundTimeSeconds || 300;
 
   const restDuration: number = 
-    activeHUDMode === 'flow' && activeLoadedFlow ? activeLoadedFlow.restTimeSeconds :
+    activeHUDMode === 'flow' && effectiveActiveFlow ? effectiveActiveFlow.restTimeSeconds :
     activeHUDMode === 'warmup' ? currentWarmUp.restTimeSeconds :
     activeHUDMode === 'drill' ? currentDrill.restTimeSeconds : 
     selectedPlan?.liveRounds?.restTimeSeconds || 60;
@@ -862,7 +1074,20 @@ export default function MatApp() {
           setCurrentRound((prev: number) => prev + 1);
           setSecondsLeft(workDuration);
         } else {
-          if (activeHUDMode === 'warmup' && selectedPlan?.drills && selectedPlan.drills.length > 0) {
+          if (activeHUDMode === 'warmup') {
+            if (selectedPlan?.flow) {
+              setActiveHUDMode('flow');
+              setCurrentRound(1);
+              setSecondsLeft(selectedPlan.flow.roundTimeSeconds);
+              setIsActive(false);
+            } else if (selectedPlan?.drills && selectedPlan.drills.length > 0) {
+              setActiveHUDMode('drill');
+              setActiveDrillIndex(0);
+              setCurrentRound(1);
+              setSecondsLeft(selectedPlan.drills[0].roundTimeSeconds);
+              setIsActive(false);
+            }
+          } else if (activeHUDMode === 'flow' && selectedPlan?.drills && selectedPlan.drills.length > 0) {
             setActiveHUDMode('drill');
             setActiveDrillIndex(0);
             setCurrentRound(1);
@@ -883,7 +1108,7 @@ export default function MatApp() {
       }
     }
     return () => { if (interval) clearInterval(interval); };
-  }, [isActive, secondsLeft, isRest, currentRound, activeHUDMode, activeDrillIndex, maxRounds, workDuration, restDuration, selectedPlan, activeLoadedFlow]);
+  }, [isActive, secondsLeft, isRest, currentRound, activeHUDMode, activeDrillIndex, maxRounds, workDuration, restDuration, selectedPlan, effectiveActiveFlow]);
 
   const handleHUDTargetChange = (type: 'warmup' | 'flow' | 'drill' | 'live', drillIdx: number = 0) => {
     setIsActive(false);
@@ -892,8 +1117,8 @@ export default function MatApp() {
     setActiveHUDMode(type);
     if (type === 'warmup') {
       setSecondsLeft(selectedPlan?.warmUp?.roundTimeSeconds || 180);
-    } else if (type === 'flow' && activeLoadedFlow) {
-      setSecondsLeft(activeLoadedFlow.roundTimeSeconds);
+    } else if (type === 'flow' && effectiveActiveFlow) {
+      setSecondsLeft(effectiveActiveFlow.roundTimeSeconds);
       setActiveFlowNodeIndex(0);
     } else if (type === 'drill' && selectedPlan?.drills?.[drillIdx]) {
       setActiveDrillIndex(drillIdx);
@@ -904,8 +1129,8 @@ export default function MatApp() {
   };
 
   const adjustHUDTimer = (field: 'rounds' | 'work' | 'rest', delta: number) => {
-    if (activeHUDMode === 'flow' && activeLoadedFlow) {
-      const curFlow = { ...activeLoadedFlow };
+    if (activeHUDMode === 'flow' && effectiveActiveFlow) {
+      const curFlow = { ...effectiveActiveFlow };
       if (field === 'rounds') curFlow.roundCount = Math.max(1, curFlow.roundCount + delta);
       if (field === 'work') {
         curFlow.roundTimeSeconds = Math.max(15, curFlow.roundTimeSeconds + delta);
@@ -915,8 +1140,11 @@ export default function MatApp() {
         curFlow.restTimeSeconds = Math.max(0, curFlow.restTimeSeconds + delta);
         if (isRest) setSecondsLeft((prev: number) => Math.max(1, prev + delta));
       }
-      setActiveLoadedFlow(curFlow);
-      setFlowLibrary(flowLibrary.map((f: FlowRoutine) => f.id === curFlow.id ? curFlow : f));
+      if (selectedPlan?.flow) {
+        setSelectedPlan({ ...selectedPlan, flow: curFlow });
+      } else {
+        setActiveLoadedFlow(curFlow);
+      }
     } else if (activeHUDMode === 'warmup' && selectedPlan?.warmUp) {
       const curWu = { ...selectedPlan.warmUp };
       if (field === 'rounds') curWu.roundCount = Math.max(1, curWu.roundCount + delta);
@@ -1026,7 +1254,7 @@ export default function MatApp() {
       }]);
     }
 
-    alert(`Warm-Up "${name}" saved to library and synchronized!`);
+    alert(`Warm-Up "${name}" saved to library!`);
   };
 
   const handleCreateNewWarmUp = async (e: React.FormEvent) => {
@@ -1086,7 +1314,7 @@ export default function MatApp() {
       }]);
     }
 
-    alert(`Flow "${routineToPersist.title}" saved to library and synchronized!`);
+    alert(`Flow "${routineToPersist.title}" saved to library!`);
     setIsEditingExistingFlow(false);
   };
 
@@ -1131,6 +1359,7 @@ export default function MatApp() {
     if (trimmed && !coreConcepts.includes(trimmed)) {
       setCoreConcepts([...coreConcepts, trimmed]);
       setBuilderForm((prev) => ({ ...prev, concept: trimmed }));
+      setActiveFlowInStudio((prev) => ({ ...prev, concept: trimmed }));
       setNewConceptInput('');
       setIsNewConceptModalOpen(false);
     }
@@ -1173,39 +1402,91 @@ export default function MatApp() {
     setBuilderForm({ ...builderForm, drills: nextDrills });
   };
 
-  const handleCreatePlan = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // --- LESSON SAVE / UPDATE / SCHEDULE DISPATCHER ---
+  const handleSaveLessonPlan = async (isNewClone: boolean, andSchedule: boolean = false) => {
     if (!currentInstructor) {
       setIsLoginModalOpen(true);
       return;
     }
-    const newPlan: LessonPlan = {
+
+    const planId = (editingLessonId && !isNewClone) ? editingLessonId : `plan-${Date.now()}`;
+    const planClassName = isNewClone ? `${builderForm.className} (Copy)` : builderForm.className;
+
+    const newOrUpdatedPlan: LessonPlan = {
       ...builderForm,
-      id: `plan-${Date.now()}`,
+      id: planId,
+      className: planClassName,
       authorInstructorId: currentInstructor.id,
       authorName: currentInstructor.name,
     };
 
-    setPlans([newPlan, ...plans]);
-    loadPlanToMat(newPlan);
+    if (editingLessonId && !isNewClone) {
+      setPlans(plans.map(p => p.id === editingLessonId ? newOrUpdatedPlan : p));
+    } else {
+      setPlans([newOrUpdatedPlan, ...plans]);
+    }
 
-    if (newPlan.isPublic && supabase) {
-      await supabase.from('lessons').insert([{
-        id: newPlan.id,
+    if (newOrUpdatedPlan.isPublic && supabase) {
+      await supabase.from('lessons').upsert([{
+        id: newOrUpdatedPlan.id,
         academy_id: DEFAULT_ACADEMY_ID,
-        author_name: newPlan.authorName,
-        class_name: newPlan.className,
-        concept: newPlan.concept,
-        age_group: newPlan.ageGroup,
-        belt_rank: newPlan.beltRank,
-        total_duration_minutes: newPlan.totalDurationMinutes,
-        tags: newPlan.tags,
-        warm_up: newPlan.warmUp,
-        drills: newPlan.drills,
-        live_rounds: newPlan.liveRounds,
+        author_name: newOrUpdatedPlan.authorName,
+        class_name: newOrUpdatedPlan.className,
+        concept: newOrUpdatedPlan.concept,
+        age_group: newOrUpdatedPlan.ageGroup,
+        belt_rank: newOrUpdatedPlan.beltRank,
+        total_duration_minutes: newOrUpdatedPlan.totalDurationMinutes,
+        tags: newOrUpdatedPlan.tags,
+        warm_up: newOrUpdatedPlan.warmUp,
+        drills: newOrUpdatedPlan.drills,
+        live_rounds: newOrUpdatedPlan.liveRounds,
         is_public: true
       }]);
     }
+
+    if (targetClassId) {
+      await updateScheduledClass(targetClassId, { assignedLessonId: newOrUpdatedPlan.id });
+    }
+
+    if (andSchedule) {
+      setSelectedTemplateForNewClass(classTemplates[0]?.id || '');
+      setNewClassLessonId(newOrUpdatedPlan.id);
+      setIsAddClassModalOpen(true);
+    } else {
+      loadPlanToMat(newOrUpdatedPlan);
+    }
+
+    setEditingLessonId(null);
+    alert(isNewClone ? 'Saved as new lesson!' : 'Lesson plan successfully updated!');
+  };
+
+  const handleEditLessonFromHub = (plan: LessonPlan) => {
+    setEditingLessonId(plan.id);
+    setBuilderForm({
+      className: plan.className,
+      concept: plan.concept,
+      ageGroup: plan.ageGroup,
+      beltRank: plan.beltRank,
+      totalDurationMinutes: plan.totalDurationMinutes,
+      tags: [...plan.tags],
+      warmUp: { ...plan.warmUp },
+      flow: plan.flow ? { ...plan.flow } : null,
+      drills: plan.drills.map(d => ({ ...d })),
+      liveRounds: { ...plan.liveRounds },
+      isPublic: plan.isPublic
+    });
+
+    const scheduledMatch = schedule.find(s => s.assignedLessonId === plan.id);
+    if (scheduledMatch) setTargetClassId(scheduledMatch.id);
+
+    setActiveTab('builder');
+  };
+
+  const handleOpenScheduleForLesson = (lessonId: string) => {
+    setNewClassLessonId(lessonId);
+    setTargetDateForNewClass(formatDateKey(new Date()));
+    setSelectedTemplateForNewClass(classTemplates[0]?.id || '');
+    setIsAddClassModalOpen(true);
   };
 
   const handleLoginSubmit = (e: React.FormEvent) => {
@@ -1341,28 +1622,17 @@ export default function MatApp() {
     }
   };
 
-const updateScheduledClass = async (classId: string, updates: Partial<ScheduledClass>) => {
-    // 1. Immediately update UI state so typing feels instantaneous
+  const updateScheduledClass = async (classId: string, updates: Partial<ScheduledClass>) => {
     const nextSchedule = schedule.map((sc: ScheduledClass) => (sc.id === classId ? { ...sc, ...updates } : sc));
     setSchedule(nextSchedule);
 
-    // 2. Persist to Supabase
     if (supabase) {
       const dbUpdates: any = {};
       if (updates.postClassNotes !== undefined) dbUpdates.post_class_notes = updates.postClassNotes;
       if (updates.modificationsSuggested !== undefined) dbUpdates.modifications_suggested = updates.modificationsSuggested;
-
+      if (updates.assignedLessonId !== undefined) dbUpdates.assigned_lesson_id = updates.assignedLessonId;
       if (Object.keys(dbUpdates).length > 0) {
-        const { error } = await supabase
-          .from('schedules')
-          .update(dbUpdates)
-          .eq('id', classId);
-
-        if (error) {
-          console.error('Supabase notes sync error:', error.message, error.details);
-        } else {
-          console.log('Notes successfully persisted to Supabase for class:', classId);
-        }
+        await supabase.from('schedules').update(dbUpdates).eq('id', classId);
       }
     }
   };
@@ -1409,109 +1679,183 @@ const updateScheduledClass = async (classId: string, updates: Partial<ScheduledC
       <audio ref={localAudioRef} onEnded={() => skipTrack('next')} className="hidden" />
 
       {/* TOP NAVIGATION BAR */}
-      <nav className="border-b border-slate-800 bg-slate-900/70 backdrop-blur px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="bg-emerald-500 text-slate-950 font-black px-2.5 py-1 rounded-lg text-sm tracking-wider">
-            MAT·OPS
-          </div>
-          <span className="font-bold text-base hidden md:inline text-slate-200">{academyName}</span>
-        </div>
-
-        <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 flex-wrap">
-          <button onClick={() => setActiveTab('mat')} className={`px-3 py-1.5 rounded-lg text-xs md:text-sm font-semibold transition ${activeTab === 'mat' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-white'}`}>Mat Timer</button>
-          <button onClick={() => setActiveTab('builder')} className={`px-3 py-1.5 rounded-lg text-xs md:text-sm font-semibold transition ${activeTab === 'builder' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-white'}`}>Lesson Builder</button>
-          <button onClick={() => setActiveTab('community')} className={`px-3 py-1.5 rounded-lg text-xs md:text-sm font-semibold transition ${activeTab === 'community' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-white'}`}>Curriculum Hub</button>
-          <button onClick={() => setActiveTab('flows')} className={`px-3 py-1.5 rounded-lg text-xs md:text-sm font-semibold flex items-center gap-1.5 transition ${activeTab === 'flows' ? 'bg-cyan-600 text-white' : 'text-cyan-400 hover:text-cyan-300'}`}><GitBranch size={14} />Flow Chains</button>
-          <button onClick={() => setActiveTab('calendar')} className={`px-3 py-1.5 rounded-lg text-xs md:text-sm font-semibold transition ${activeTab === 'calendar' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-white'}`}>Academy Calendar</button>
-          <button onClick={() => setActiveTab('chat')} className={`px-3 py-1.5 rounded-lg text-xs md:text-sm font-semibold flex items-center gap-1.5 transition ${activeTab === 'chat' ? 'bg-indigo-600 text-white' : 'text-indigo-400 hover:text-indigo-300'}`}><Sparkles size={14} />Ask AI</button>
-          <button onClick={() => setActiveTab('academy')} className={`px-3 py-1.5 rounded-lg text-xs md:text-sm font-semibold transition ${activeTab === 'academy' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-white'}`}>Roster & Roles</button>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setIsMusicDeckOpen(!isMusicDeckOpen)}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition ${
-              isMusicDeckOpen || isMusicPlaying
-                ? 'bg-purple-950/60 border-purple-600 text-purple-300 shadow-md'
-                : 'border-slate-800 bg-slate-900 text-slate-400 hover:border-slate-700 hover:text-white'
-            }`}
-          >
-            <Music size={15} className={isMusicPlaying ? 'animate-pulse text-purple-400' : 'text-slate-400'} />
-            <span className="hidden sm:inline">Music</span>
-          </button>
-
-          <button
-            onClick={() => setIsAudioModalOpen(true)}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-800 bg-slate-900 text-xs font-semibold hover:border-slate-700"
-          >
-            <Volume2 size={15} className="text-emerald-400" />
-            <span className="hidden sm:inline">Bells</span>
-          </button>
-
-          {currentInstructor ? (
-            <div className="flex items-center gap-2 pl-2 border-l border-slate-800">
-              <button
-                onClick={() => setActiveTab('profile')}
-                className="flex items-center gap-2 text-left hover:opacity-80 transition bg-slate-900/60 border border-slate-800 px-2.5 py-1 rounded-xl"
-              >
-                <div className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 font-black text-xs flex items-center justify-center border border-emerald-500/30">
-                  {currentInstructor.name[0]}
-                </div>
-                <div className="hidden lg:block">
-                  <div className="text-xs font-bold text-slate-100">{currentInstructor.name}</div>
-                  <div className="text-[10px] uppercase font-semibold text-emerald-400">{currentInstructor.role}</div>
-                </div>
-              </button>
-
-              <button
-                onClick={() => setCurrentInstructor(null)}
-                title="Sign Out"
-                className="text-slate-400 hover:text-rose-400 p-1.5 rounded-lg hover:bg-slate-900"
-              >
-                <LogOut size={16} />
-              </button>
-            </div>
-          ) : (
+      <nav className="border-b border-slate-800 bg-slate-900/70 backdrop-blur px-3 sm:px-4 py-2.5 sm:py-3 sticky top-0 z-50">
+        <div className="flex items-center justify-between gap-2 max-w-7xl mx-auto w-full">
+          <div className="flex items-center gap-2.5">
+            {/* Mobile Hamburger Button */}
             <button
-              onClick={() => { setLoginError(''); setIsLoginModalOpen(true); }}
-              className="flex items-center gap-1.5 text-xs font-bold text-slate-950 bg-emerald-500 hover:bg-emerald-400 px-3.5 py-1.5 rounded-xl shadow-md transition"
+              type="button"
+              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+              aria-label="Toggle navigation menu"
+              className="lg:hidden p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white hover:bg-slate-800 focus:outline-none"
             >
-              <LogIn size={14} /> Log In
+              {isMobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
             </button>
-          )}
+
+            <div className="bg-emerald-500 text-slate-950 font-black px-2.5 py-1 rounded-lg text-sm tracking-wider">
+              MAT·OPS
+            </div>
+            <span className="font-bold text-sm sm:text-base hidden sm:inline text-slate-200 truncate max-w-[180px] md:max-w-xs">{academyName}</span>
+          </div>
+
+          {/* Desktop Navigation Links */}
+          <div className="hidden lg:flex bg-slate-950 p-1 rounded-xl border border-slate-800">
+            <button onClick={() => setActiveTab('mat')} className={`px-3 py-1.5 rounded-lg text-xs md:text-sm font-semibold transition ${activeTab === 'mat' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-white'}`}>Mat Timer</button>
+            <button onClick={() => setActiveTab('builder')} className={`px-3 py-1.5 rounded-lg text-xs md:text-sm font-semibold transition ${activeTab === 'builder' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-white'}`}>Lesson Builder</button>
+            <button onClick={() => setActiveTab('community')} className={`px-3 py-1.5 rounded-lg text-xs md:text-sm font-semibold transition ${activeTab === 'community' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-white'}`}>Curriculum Hub</button>
+            <button onClick={() => setActiveTab('flows')} className={`px-3 py-1.5 rounded-lg text-xs md:text-sm font-semibold flex items-center gap-1.5 transition ${activeTab === 'flows' ? 'bg-cyan-600 text-white' : 'text-cyan-400 hover:text-cyan-300'}`}><GitBranch size={14} />Flow Chains</button>
+            <button onClick={() => setActiveTab('calendar')} className={`px-3 py-1.5 rounded-lg text-xs md:text-sm font-semibold transition ${activeTab === 'calendar' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-white'}`}>Academy Calendar</button>
+            <button onClick={() => setActiveTab('chat')} className={`px-3 py-1.5 rounded-lg text-xs md:text-sm font-semibold flex items-center gap-1.5 transition ${activeTab === 'chat' ? 'bg-indigo-600 text-white' : 'text-indigo-400 hover:text-indigo-300'}`}><Sparkles size={14} />Ask AI</button>
+            <button onClick={() => setActiveTab('academy')} className={`px-3 py-1.5 rounded-lg text-xs md:text-sm font-semibold transition ${activeTab === 'academy' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-white'}`}>Roster & Roles</button>
+          </div>
+
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <button
+              onClick={() => setIsMusicDeckOpen(!isMusicDeckOpen)}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition ${
+                isMusicDeckOpen || isMusicPlaying
+                  ? 'bg-purple-950/60 border-purple-600 text-purple-300 shadow-md'
+                  : 'border-slate-800 bg-slate-900 text-slate-400 hover:border-slate-700 hover:text-white'
+              }`}
+            >
+              <Music size={15} className={isMusicPlaying ? 'animate-pulse text-purple-400' : 'text-slate-400'} />
+              <span className="hidden sm:inline">Music</span>
+            </button>
+
+            <button
+              onClick={() => setIsAudioModalOpen(true)}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-800 bg-slate-900 text-xs font-semibold hover:border-slate-700"
+            >
+              <Volume2 size={15} className="text-emerald-400" />
+              <span className="hidden sm:inline">Bells</span>
+            </button>
+
+            {currentInstructor ? (
+              <div className="flex items-center gap-1.5 sm:gap-2 pl-1 sm:pl-2 border-l border-slate-800">
+                <button
+                  onClick={() => setActiveTab('profile')}
+                  className="flex items-center gap-1.5 text-left hover:opacity-80 transition bg-slate-900/60 border border-slate-800 px-2 py-1 rounded-xl"
+                >
+                  <div className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 font-black text-xs flex items-center justify-center border border-emerald-500/30">
+                    {currentInstructor.name[0]}
+                  </div>
+                  <div className="hidden xl:block">
+                    <div className="text-xs font-bold text-slate-100">{currentInstructor.name}</div>
+                    <div className="text-[10px] uppercase font-semibold text-emerald-400">{currentInstructor.role}</div>
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => setCurrentInstructor(null)}
+                  title="Sign Out"
+                  className="text-slate-400 hover:text-rose-400 p-1.5 rounded-lg hover:bg-slate-900"
+                >
+                  <LogOut size={16} />
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => { setLoginError(''); setIsLoginModalOpen(true); }}
+                className="flex items-center gap-1.5 text-xs font-bold text-slate-950 bg-emerald-500 hover:bg-emerald-400 px-3.5 py-1.5 rounded-xl shadow-md transition"
+              >
+                <LogIn size={14} /> Log In
+              </button>
+            )}
+          </div>
         </div>
+
+        {/* Mobile Dropdown Menu Drawer */}
+        {isMobileMenuOpen && (
+          <div className="lg:hidden mt-2 pt-2 border-t border-slate-800/80 grid grid-cols-2 gap-1.5 pb-1">
+            <button
+              onClick={() => { setActiveTab('mat'); setIsMobileMenuOpen(false); }}
+              className={`px-3 py-2 rounded-xl text-xs font-bold text-left flex items-center gap-2 ${
+                activeTab === 'mat' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40' : 'bg-slate-950 text-slate-300'
+              }`}
+            >
+              <Clock size={14} /> Mat Timer
+            </button>
+            <button
+              onClick={() => { setActiveTab('builder'); setIsMobileMenuOpen(false); }}
+              className={`px-3 py-2 rounded-xl text-xs font-bold text-left flex items-center gap-2 ${
+                activeTab === 'builder' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40' : 'bg-slate-950 text-slate-300'
+              }`}
+            >
+              <Edit3 size={14} /> Lesson Builder
+            </button>
+            <button
+              onClick={() => { setActiveTab('community'); setIsMobileMenuOpen(false); }}
+              className={`px-3 py-2 rounded-xl text-xs font-bold text-left flex items-center gap-2 ${
+                activeTab === 'community' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40' : 'bg-slate-950 text-slate-300'
+              }`}
+            >
+              <BookOpen size={14} /> Curriculum Hub
+            </button>
+            <button
+              onClick={() => { setActiveTab('flows'); setIsMobileMenuOpen(false); }}
+              className={`px-3 py-2 rounded-xl text-xs font-bold text-left flex items-center gap-2 ${
+                activeTab === 'flows' ? 'bg-cyan-600 text-white' : 'bg-slate-950 text-cyan-400'
+              }`}
+            >
+              <GitBranch size={14} /> Flow Chains
+            </button>
+            <button
+              onClick={() => { setActiveTab('calendar'); setIsMobileMenuOpen(false); }}
+              className={`px-3 py-2 rounded-xl text-xs font-bold text-left flex items-center gap-2 ${
+                activeTab === 'calendar' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40' : 'bg-slate-950 text-slate-300'
+              }`}
+            >
+              <CalendarIcon size={14} /> Calendar
+            </button>
+            <button
+              onClick={() => { setActiveTab('chat'); setIsMobileMenuOpen(false); }}
+              className={`px-3 py-2 rounded-xl text-xs font-bold text-left flex items-center gap-2 ${
+                activeTab === 'chat' ? 'bg-indigo-600 text-white' : 'bg-slate-950 text-indigo-400'
+              }`}
+            >
+              <Sparkles size={14} /> Ask AI
+            </button>
+            <button
+              onClick={() => { setActiveTab('academy'); setIsMobileMenuOpen(false); }}
+              className={`px-3 py-2 rounded-xl text-xs font-bold text-left flex items-center gap-2 col-span-2 ${
+                activeTab === 'academy' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40' : 'bg-slate-950 text-slate-300'
+              }`}
+            >
+              <Users size={14} /> Roster & Roles
+            </button>
+          </div>
+        )}
       </nav>
 
-      {/* VIEW 1: MAT TIMER VIEW */}
+      {/* VIEW 1: FULLY RESPONSIVE HIGH-CONTRAST MAT HUD */}
       {activeTab === 'mat' && (
-        <main className="flex-1 flex flex-col justify-between p-4 md:p-8 max-w-6xl mx-auto w-full">
-          <header className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-900 pb-4 gap-4">
-            <div>
-              <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                <span className={`text-xs font-bold px-2 py-0.5 rounded uppercase ${
-                  isRest ? 'bg-amber-500/20 text-amber-400' :
-                  activeHUDMode === 'flow' ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-800/40' :
-                  activeHUDMode === 'warmup' ? 'bg-orange-500/20 text-orange-400' :
-                  activeHUDMode === 'drill' ? 'bg-emerald-500/20 text-emerald-400' :
-                  'bg-indigo-500/20 text-indigo-400'
+        <main className={`flex-1 flex flex-col justify-between p-3 sm:p-6 md:p-10 max-w-6xl mx-auto w-full transition-colors duration-500 ${
+          isRest ? 'bg-amber-950/20' : 'bg-transparent'
+        }`}>
+          {/* Header Banner - Responsive Column Stacking */}
+          <header className="flex flex-col gap-3 border-b-2 border-slate-800 pb-3 sm:pb-4 w-full">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className={`text-xs sm:text-sm md:text-base font-black px-2.5 sm:px-3 py-0.5 sm:py-1 rounded-md uppercase tracking-wider ${
+                  isRest ? 'bg-amber-500 text-slate-950 shadow-lg' : 'bg-emerald-500 text-slate-950 shadow-lg'
                 }`}>
-                  {isRest ? 'Rest Interval' : 
-                   activeHUDMode === 'flow' ? 'Tactical Flow Chain' :
-                   activeHUDMode === 'warmup' ? 'Warm-Up Phase' : 
-                   activeHUDMode === 'drill' ? 'Positional Drill' : 'Live Rolling'}
+                  {isRest ? 'REST INTERVAL' : activeHUDMode === 'flow' ? 'TACTICAL FLOW' : activeHUDMode.toUpperCase()}
                 </span>
-                <span className="text-xs font-bold text-indigo-400 bg-indigo-950/40 border border-indigo-800/40 px-2 py-0.5 rounded">
-                  {activeHUDMode === 'flow' && activeLoadedFlow ? activeLoadedFlow.concept : selectedPlan?.concept}
+                <span className="text-xs sm:text-sm md:text-base font-extrabold text-white bg-slate-900 border border-slate-700 px-2.5 sm:px-3 py-0.5 sm:py-1 rounded-md">
+                  {selectedPlan?.ageGroup || 'All Levels'}
                 </span>
-                <span className="text-xs text-slate-400 border border-slate-800 px-2 py-0.5 rounded">{selectedPlan?.ageGroup}</span>
+                <span className="text-xs sm:text-sm font-bold text-indigo-300 bg-indigo-950/60 border border-indigo-800/60 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-md truncate max-w-full">
+                  {activeHUDMode === 'flow' && effectiveActiveFlow ? effectiveActiveFlow.concept : selectedPlan?.concept}
+                </span>
               </div>
-              <h1 className="text-xl md:text-3xl font-extrabold">
-                {activeHUDMode === 'flow' && activeLoadedFlow ? activeLoadedFlow.title : selectedPlan?.className}
+              <h1 className="text-xl sm:text-2xl md:text-4xl font-black text-white truncate max-w-full mt-1 drop-shadow-sm">
+                {activeHUDMode === 'flow' && effectiveActiveFlow ? effectiveActiveFlow.title : selectedPlan?.className}
               </h1>
             </div>
 
-            <div className="flex items-center gap-3">
-              <div className="relative">
+            {/* Compact Mobile Control Row: Dropdown + Round Badge */}
+            <div className="flex items-center gap-2 sm:gap-4 w-full">
+              <div className="relative flex-1 min-w-0">
                 <select
                   value={
                     activeHUDMode === 'flow' ? 'flow' :
@@ -1525,16 +1869,16 @@ const updateScheduledClass = async (classId: string, updates: Partial<ScheduledC
                     else if (val === 'live') handleHUDTargetChange('live');
                     else handleHUDTargetChange('drill', parseInt(val.replace('drill-', '')));
                   }}
-                  className="bg-slate-900 border border-slate-700 text-slate-100 font-bold text-sm px-4 py-2.5 rounded-xl appearance-none pr-10 focus:outline-none focus:border-emerald-500"
+                  className="w-full bg-slate-900 border-2 border-slate-700 text-white font-extrabold text-xs sm:text-sm md:text-base px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl appearance-none pr-8 sm:pr-10 focus:outline-none focus:border-emerald-500 shadow-md truncate"
                 >
-                  {activeLoadedFlow && (
-                    <optgroup label="Tactical Flow">
-                      <option value="flow">Flow Chain: {activeLoadedFlow.title}</option>
-                    </optgroup>
-                  )}
                   <optgroup label="Preparation">
                     <option value="warmup">Warm-Up: {selectedPlan?.warmUp?.warmUpName || 'Warm-Up'}</option>
                   </optgroup>
+                  {effectiveActiveFlow && (
+                    <optgroup label="Tactical Flow">
+                      <option value="flow">Flow Chain: {effectiveActiveFlow.title}</option>
+                    </optgroup>
+                  )}
                   {selectedPlan?.drills && selectedPlan.drills.length > 0 && (
                     <optgroup label="Drills">
                       {selectedPlan.drills.map((d: Drill, idx: number) => (
@@ -1546,44 +1890,46 @@ const updateScheduledClass = async (classId: string, updates: Partial<ScheduledC
                     <option value="live">Live Rounds ({selectedPlan?.liveRounds?.roundCount || 5} Rounds)</option>
                   </optgroup>
                 </select>
-                <ChevronDown size={16} className="absolute right-3 top-3.5 pointer-events-none text-slate-400" />
+                <ChevronDown size={16} className="absolute right-2.5 sm:right-3.5 top-3.5 sm:top-4 pointer-events-none text-slate-400" />
               </div>
 
-              <div className="text-right pl-3 border-l border-slate-800">
-                <span className="text-xs text-slate-400 uppercase font-semibold">Round</span>
-                <div className="text-2xl md:text-3xl font-black text-slate-100">{currentRound} / {maxRounds}</div>
+              {/* Responsive Round Readout Badge */}
+              <div className="text-right bg-slate-900 border-2 border-slate-800 px-3 sm:px-5 py-1.5 sm:py-2.5 rounded-xl sm:rounded-2xl shadow-inner shrink-0 min-w-[90px] sm:min-w-[130px]">
+                <span className="text-[9px] sm:text-[11px] uppercase font-black text-slate-400 block tracking-widest">ROUND</span>
+                <div className="text-2xl sm:text-4xl md:text-5xl font-black text-white tabular-nums leading-none mt-0.5">
+                  {currentRound} <span className="text-slate-500 text-lg sm:text-2xl md:text-3xl">/ {maxRounds}</span>
+                </div>
               </div>
             </div>
           </header>
 
           {/* MUSIC DECK */}
-          <div className="bg-slate-900/70 border border-purple-900/40 rounded-2xl p-3 my-2 shadow-lg backdrop-blur">
-            <div className="flex flex-col md:flex-row items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs font-bold">
-                  <button onClick={() => setMusicSource('local')} className={`px-2.5 py-1 rounded-lg transition ${musicSource === 'local' ? 'bg-purple-600 text-white' : 'text-slate-400 hover:text-white'}`}>Local Files</button>
-                  <button onClick={() => setMusicSource('spotify')} className={`px-2.5 py-1 rounded-lg transition ${musicSource === 'spotify' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-white'}`}>Spotify</button>
-                  <button onClick={() => setMusicSource('apple')} className={`px-2.5 py-1 rounded-lg transition ${musicSource === 'apple' ? 'bg-rose-600 text-white' : 'text-slate-400 hover:text-white'}`}>Apple Music</button>
+          <div className="bg-slate-900/70 border border-purple-900/40 rounded-2xl p-2.5 sm:p-3 my-2 shadow-lg backdrop-blur">
+            <div className="flex flex-col md:flex-row items-center justify-between gap-2.5 sm:gap-3">
+              <div className="flex items-center gap-2 sm:gap-3 w-full md:w-auto justify-between md:justify-start">
+                <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 text-[11px] sm:text-xs font-bold">
+                  <button onClick={() => setMusicSource('local')} className={`px-2 py-1 rounded-lg transition ${musicSource === 'local' ? 'bg-purple-600 text-white' : 'text-slate-400 hover:text-white'}`}>Local Files</button>
+                  <button onClick={() => setMusicSource('spotify')} className={`px-2 py-1 rounded-lg transition ${musicSource === 'spotify' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-white'}`}>Spotify</button>
+                  <button onClick={() => setMusicSource('apple')} className={`px-2 py-1 rounded-lg transition ${musicSource === 'apple' ? 'bg-rose-600 text-white' : 'text-slate-400 hover:text-white'}`}>Apple Music</button>
                 </div>
                 {musicSource === 'local' ? (
-                  <div className="text-xs">
+                  <div className="text-xs truncate max-w-[150px] sm:max-w-xs">
                     {localPlaylist.length > 0 ? (
-                      <div className="flex items-center gap-1.5 font-bold text-purple-300 truncate max-w-xs sm:max-w-md">
-                        <Disc3 size={14} className={isMusicPlaying ? 'animate-spin' : ''} />
+                      <div className="flex items-center gap-1.5 font-bold text-purple-300 truncate">
+                        <Disc3 size={14} className={isMusicPlaying ? 'animate-spin shrink-0' : 'shrink-0'} />
                         <span className="truncate">{localPlaylist[currentTrackIndex]?.name}</span>
-                        <span className="text-[10px] text-slate-500 font-semibold">({currentTrackIndex + 1}/{localPlaylist.length})</span>
                       </div>
-                    ) : (<span className="text-slate-500 italic">No audio files loaded yet</span>)}
+                    ) : (<span className="text-slate-500 italic">No audio loaded</span>)}
                   </div>
                 ) : (
-                  <div className="text-xs font-bold text-slate-300 flex items-center gap-1.5"><Radio size={14} className="text-emerald-400" /><span>Streaming Ready</span></div>
+                  <div className="text-xs font-bold text-slate-300 flex items-center gap-1.5"><Radio size={14} className="text-emerald-400" /><span>Ready</span></div>
                 )}
               </div>
 
               {musicSource === 'local' ? (
-                <div className="flex items-center gap-3">
-                  <label className="flex items-center gap-1 text-xs font-bold text-slate-300 bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-xl border border-slate-700 cursor-pointer">
-                    <UploadCloud size={14} /><span>Upload Tracks</span>
+                <div className="flex items-center gap-2 sm:gap-3 w-full md:w-auto justify-between md:justify-end">
+                  <label className="flex items-center gap-1 text-[11px] sm:text-xs font-bold text-slate-300 bg-slate-800 hover:bg-slate-700 px-2.5 sm:px-3 py-1.5 rounded-xl border border-slate-700 cursor-pointer">
+                    <UploadCloud size={13} /><span>Upload</span>
                     <input type="file" multiple accept="audio/*" onChange={handleLocalFilesUpload} className="hidden" />
                   </label>
                   <div className="flex items-center gap-1 bg-slate-950 border border-slate-800 p-1 rounded-xl">
@@ -1599,73 +1945,92 @@ const updateScheduledClass = async (classId: string, updates: Partial<ScheduledC
             </div>
           </div>
 
-          {/* CENTRAL CLOCK */}
-          <section className="text-center my-3">
-            <div className={`text-8xl sm:text-9xl md:text-[11rem] font-black tracking-tighter tabular-nums ${isRest ? 'text-amber-400' : 'text-white'}`}>
+          {/* Central High-Visibility Clock Display */}
+          <section className="text-center my-auto py-2">
+            <div className={`text-8xl sm:text-[11rem] md:text-[14rem] font-black tracking-tighter tabular-nums leading-none drop-shadow-2xl ${
+              isRest ? 'text-amber-400' : secondsLeft <= 10 && isActive ? 'text-rose-500 animate-pulse' : 'text-white'
+            }`}>
               {formatTime(secondsLeft)}
             </div>
 
-            <div className="flex justify-center items-center gap-3 mt-4 flex-wrap">
+            {/* Mat-Scale Touch Controls */}
+            <div className="flex justify-center items-center gap-3 sm:gap-5 mt-4 sm:mt-6 flex-wrap">
               <button
                 onClick={() => { playSoundTone('start'); setIsActive(!isActive); }}
-                className={`flex items-center gap-2 px-8 py-4 rounded-2xl font-bold text-lg shadow-xl transition active:scale-95 ${
-                  isActive ? 'bg-amber-600 hover:bg-amber-500 text-white' : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                className={`flex items-center justify-center gap-2 sm:gap-3 px-8 sm:px-10 py-4 sm:py-6 min-h-[64px] sm:min-h-[72px] min-w-[160px] sm:min-w-[210px] rounded-2xl font-black text-lg sm:text-2xl shadow-2xl transition active:scale-95 ${
+                  isActive ? 'bg-amber-500 hover:bg-amber-400 text-slate-950' : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950'
                 }`}
               >
-                {isActive ? <Pause size={24} /> : <Play size={24} />}
-                {isActive ? 'Pause' : 'Start Round'}
+                {isActive ? <Pause size={26} /> : <Play size={26} />}
+                <span>{isActive ? 'PAUSE' : 'START'}</span>
               </button>
 
-              <button onClick={() => { setIsActive(false); setIsRest(false); setSecondsLeft(workDuration); }} className="flex items-center gap-2 px-6 py-4 rounded-2xl bg-slate-900 border border-slate-800 hover:bg-slate-800 font-semibold">
-                <RotateCcw size={20} /> Reset
+              <button
+                onClick={() => { setIsActive(false); setIsRest(false); setSecondsLeft(workDuration); }}
+                className="flex items-center justify-center gap-2 px-6 sm:px-8 py-4 sm:py-6 min-h-[64px] sm:min-h-[72px] rounded-2xl bg-slate-900 border-2 border-slate-700 hover:bg-slate-800 font-bold text-base sm:text-lg text-white shadow-lg active:scale-95"
+              >
+                <RotateCcw size={22} />
+                <span>RESET</span>
               </button>
 
-              <button onClick={() => { setIsActive(false); setIsRest(false); setCurrentRound((prev: number) => (prev < maxRounds ? prev + 1 : 1)); setSecondsLeft(workDuration); }} className="flex items-center gap-2 px-6 py-4 rounded-2xl bg-slate-900 border border-slate-800 hover:bg-slate-800 font-semibold">
-                <SkipForward size={20} /> Skip Round
+              <button
+                onClick={() => {
+                  setIsActive(false);
+                  setIsRest(false);
+                  setCurrentRound((prev) => (prev < maxRounds ? prev + 1 : 1));
+                  setSecondsLeft(workDuration);
+                }}
+                className="flex items-center justify-center gap-2 px-6 sm:px-8 py-4 sm:py-6 min-h-[64px] sm:min-h-[72px] rounded-2xl bg-slate-900 border-2 border-slate-700 hover:bg-slate-800 font-bold text-base sm:text-lg text-white shadow-lg active:scale-95"
+              >
+                <SkipForward size={22} />
+                <span>SKIP</span>
               </button>
             </div>
 
-            <div className="mt-5 bg-slate-900/50 border border-slate-800/80 p-3 rounded-2xl max-w-2xl mx-auto flex justify-center items-center gap-6 text-xs text-slate-300">
-              <span className="text-[11px] font-bold text-slate-500 uppercase">Modifiers:</span>
-              <div className="flex items-center gap-1.5">
-                <span>Round:</span>
-                <button onClick={() => adjustHUDTimer('work', -60)} className="px-1.5 py-0.5 rounded bg-slate-800 hover:text-white font-bold">-1m</button>
-                <button onClick={() => adjustHUDTimer('work', 60)} className="px-1.5 py-0.5 rounded bg-slate-800 hover:text-white font-bold">+1m</button>
+            {/* Quick-hit Delta Modifier Bar */}
+            <div className="mt-5 sm:mt-7 bg-slate-900 border-2 border-slate-800 p-2.5 sm:p-3 rounded-2xl max-w-xl mx-auto flex justify-around items-center text-xs sm:text-sm font-bold text-slate-200 shadow-md">
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <span className="text-slate-400 uppercase text-[10px] sm:text-xs">Work:</span>
+                <button onClick={() => adjustHUDTimer('work', -60)} className="px-2.5 sm:px-3 py-1.5 sm:py-2 min-h-[38px] sm:min-h-[44px] min-w-[38px] sm:min-w-[44px] rounded-xl bg-slate-800 border border-slate-700 hover:bg-slate-700 text-white font-extrabold">-1m</button>
+                <button onClick={() => adjustHUDTimer('work', 60)} className="px-2.5 sm:px-3 py-1.5 sm:py-2 min-h-[38px] sm:min-h-[44px] min-w-[38px] sm:min-w-[44px] rounded-xl bg-slate-800 border border-slate-700 hover:bg-slate-700 text-white font-extrabold">+1m</button>
               </div>
-              <div className="flex items-center gap-1.5">
-                <span>Rest:</span>
-                <button onClick={() => adjustHUDTimer('rest', -30)} className="px-1.5 py-0.5 rounded bg-slate-800 hover:text-white font-bold">-30s</button>
-                <button onClick={() => adjustHUDTimer('rest', 30)} className="px-1.5 py-0.5 rounded bg-slate-800 hover:text-white font-bold">+30s</button>
+
+              <div className="w-[1px] h-7 sm:h-8 bg-slate-800" />
+
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <span className="text-slate-400 uppercase text-[10px] sm:text-xs">Rest:</span>
+                <button onClick={() => adjustHUDTimer('rest', -30)} className="px-2.5 sm:px-3 py-1.5 sm:py-2 min-h-[38px] sm:min-h-[44px] min-w-[38px] sm:min-w-[44px] rounded-xl bg-slate-800 border border-slate-700 hover:bg-slate-700 text-white font-extrabold">-30s</button>
+                <button onClick={() => adjustHUDTimer('rest', 30)} className="px-2.5 sm:px-3 py-1.5 sm:py-2 min-h-[38px] sm:min-h-[44px] min-w-[38px] sm:min-w-[44px] rounded-xl bg-slate-800 border border-slate-700 hover:bg-slate-700 text-white font-extrabold">+30s</button>
               </div>
             </div>
           </section>
 
-          {/* CONTEXT FOOTER */}
-          <footer className="space-y-4">
-            {activeHUDMode === 'flow' && activeLoadedFlow ? (
-              <div className="bg-slate-900/90 border border-cyan-900/50 rounded-2xl p-5 space-y-4 shadow-xl">
-                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+          {/* Context Footer (Warm-Up, Flow Chain, or Drill Details) */}
+          <footer className="space-y-4 mt-4 sm:mt-6">
+            {activeHUDMode === 'flow' && effectiveActiveFlow ? (
+              <div className="bg-slate-900/90 border-2 border-cyan-900/50 rounded-2xl p-4 sm:p-5 space-y-4 shadow-xl">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3 flex-wrap gap-2">
                   <div className="flex items-center gap-2">
-                    <GitBranch size={18} className="text-cyan-400" />
-                    <span className="text-sm font-extrabold text-white">Flow: {activeLoadedFlow.title}</span>
-                    <span className="text-xs bg-cyan-950/60 text-cyan-300 border border-cyan-800/40 px-2 py-0.5 rounded">
-                      Starts in {activeLoadedFlow.startingPosition}
+                    <GitBranch size={20} className="text-cyan-400" />
+                    <span className="text-sm sm:text-base font-extrabold text-white">Flow: {effectiveActiveFlow.title}</span>
+                    <span className="text-[10px] sm:text-xs bg-cyan-950/60 text-cyan-300 border border-cyan-800/40 px-2 py-0.5 rounded font-bold">
+                      Starts in {effectiveActiveFlow.startingPosition}
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-xs text-slate-400">Node {activeFlowNodeIndex + 1} of {activeLoadedFlow.nodes.length}</span>
+                    <span className="text-xs text-slate-400 font-semibold">Node {activeFlowNodeIndex + 1} of {effectiveActiveFlow.nodes.length}</span>
                     <button onClick={() => setActiveFlowNodeIndex(Math.max(0, activeFlowNodeIndex - 1))} disabled={activeFlowNodeIndex === 0} className="p-1 rounded bg-slate-800 disabled:opacity-40"><ChevronLeft size={16} /></button>
-                    <button onClick={() => setActiveFlowNodeIndex(Math.min(activeLoadedFlow.nodes.length - 1, activeFlowNodeIndex + 1))} disabled={activeFlowNodeIndex === activeLoadedFlow.nodes.length - 1} className="p-1 rounded bg-slate-800 disabled:opacity-40"><ChevronRight size={16} /></button>
+                    <button onClick={() => setActiveFlowNodeIndex(Math.min(effectiveActiveFlow.nodes.length - 1, activeFlowNodeIndex + 1))} disabled={activeFlowNodeIndex === effectiveActiveFlow.nodes.length - 1} className="p-1 rounded bg-slate-800 disabled:opacity-40"><ChevronRight size={16} /></button>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-2 pb-2">
-                  {activeLoadedFlow.nodes.map((node: FlowNode, idx: number) => (
+                  {effectiveActiveFlow.nodes.map((node: FlowNode, idx: number) => (
                     <button
                       key={node.id}
                       onClick={() => setActiveFlowNodeIndex(idx)}
                       className={`p-2.5 rounded-xl border text-left transition ${
-                        activeFlowNodeIndex === idx ? 'border-cyan-500 bg-cyan-950/50 shadow-md' : 'border-slate-800 bg-slate-950/60 opacity-60 hover:opacity-100'
+                        activeFlowNodeIndex === idx ? 'border-cyan-500 bg-cyan-950/60 shadow-md font-bold' : 'border-slate-800 bg-slate-950/60 opacity-60 hover:opacity-100'
                       }`}
                     >
                       <div className="text-[10px] font-black uppercase text-cyan-400">Node {idx + 1}</div>
@@ -1674,59 +2039,59 @@ const updateScheduledClass = async (classId: string, updates: Partial<ScheduledC
                   ))}
                 </div>
 
-                {activeLoadedFlow.nodes[activeFlowNodeIndex] && (
-                  <div className="grid md:grid-cols-3 gap-4 pt-1">
-                    <div className="bg-slate-950/90 border border-slate-800 p-4 rounded-xl border-l-4 border-l-cyan-500">
-                      <div className="text-xs uppercase font-bold text-slate-400">Technique State</div>
-                      <div className="text-lg font-black text-white mt-1">{activeLoadedFlow.nodes[activeFlowNodeIndex].techniqueName}</div>
+                {effectiveActiveFlow.nodes[activeFlowNodeIndex] && (
+                  <div className="grid md:grid-cols-3 gap-3 sm:gap-4 pt-1">
+                    <div className="bg-slate-950/90 border border-slate-800 p-3.5 sm:p-4 rounded-xl border-l-4 border-l-cyan-500">
+                      <div className="text-xs uppercase font-extrabold text-slate-400">Technique State</div>
+                      <div className="text-base sm:text-lg font-black text-white mt-1">{effectiveActiveFlow.nodes[activeFlowNodeIndex].techniqueName}</div>
                     </div>
-                    <div className="bg-slate-950/90 border border-slate-800 p-4 rounded-xl border-l-4 border-l-amber-500">
-                      <div className="text-xs uppercase font-bold text-slate-400">Defense / Reaction Trigger</div>
-                      <p className="text-xs font-semibold text-amber-200 mt-1">{activeLoadedFlow.nodes[activeFlowNodeIndex].opponentDefenseTrigger}</p>
+                    <div className="bg-slate-950/90 border border-slate-800 p-3.5 sm:p-4 rounded-xl border-l-4 border-l-amber-500">
+                      <div className="text-xs uppercase font-extrabold text-slate-400">Defense / Reaction Trigger</div>
+                      <p className="text-xs sm:text-sm font-semibold text-amber-200 mt-1">{effectiveActiveFlow.nodes[activeFlowNodeIndex].opponentDefenseTrigger}</p>
                     </div>
-                    <div className="bg-slate-950/90 border border-slate-800 p-4 rounded-xl border-l-4 border-l-emerald-500">
-                      <div className="text-xs uppercase font-bold text-slate-400">Transition Cue</div>
-                      <p className="text-xs font-semibold text-emerald-200 mt-1">{activeLoadedFlow.nodes[activeFlowNodeIndex].transitionCue}</p>
+                    <div className="bg-slate-950/90 border border-slate-800 p-3.5 sm:p-4 rounded-xl border-l-4 border-l-emerald-500">
+                      <div className="text-xs uppercase font-extrabold text-slate-400">Transition Cue</div>
+                      <p className="text-xs sm:text-sm font-semibold text-emerald-200 mt-1">{effectiveActiveFlow.nodes[activeFlowNodeIndex].transitionCue}</p>
                     </div>
                   </div>
                 )}
               </div>
             ) : activeHUDMode === 'warmup' ? (
-              <div className="grid md:grid-cols-3 gap-4">
-                <div className="bg-slate-900/90 border border-slate-800 p-4 rounded-2xl border-l-4 border-l-orange-500">
-                  <div className="text-xs uppercase font-bold text-slate-400">Warm-Up Activity</div>
-                  <div className="text-base font-bold text-white mt-0.5">{currentWarmUp.warmUpName}</div>
-                  <p className="text-xs text-slate-400 mt-1">{currentWarmUp.description}</p>
+              <div className="grid md:grid-cols-3 gap-3 sm:gap-4">
+                <div className="bg-slate-900/90 border border-slate-800 p-3.5 sm:p-4 rounded-2xl border-l-4 border-l-orange-500 shadow-md">
+                  <div className="text-xs uppercase font-extrabold text-slate-400">Warm-Up Activity</div>
+                  <div className="text-base sm:text-lg font-black text-white mt-0.5">{currentWarmUp.warmUpName}</div>
+                  <p className="text-xs text-slate-300 mt-1">{currentWarmUp.description}</p>
                 </div>
-                <div className="bg-slate-900/90 border border-slate-800 p-4 rounded-2xl border-l-4 border-l-amber-500">
-                  <div className="text-xs uppercase font-bold text-slate-400">Game Rules</div>
-                  <p className="text-sm font-semibold text-slate-200 mt-1.5">{currentWarmUp.gameRules || 'Standard movement rules.'}</p>
+                <div className="bg-slate-900/90 border border-slate-800 p-3.5 sm:p-4 rounded-2xl border-l-4 border-l-amber-500 shadow-md">
+                  <div className="text-xs uppercase font-extrabold text-slate-400">Game Rules</div>
+                  <p className="text-sm font-semibold text-slate-100 mt-1.5">{currentWarmUp.gameRules || 'Standard movement rules.'}</p>
                 </div>
-                <div className="bg-slate-900/90 border border-slate-800 p-4 rounded-2xl border-l-4 border-l-rose-500">
-                  <div className="text-xs uppercase font-bold text-slate-400">Constraints</div>
-                  <p className="text-sm font-semibold text-slate-200 mt-1.5">{currentWarmUp.constraints || 'No additional constraints.'}</p>
+                <div className="bg-slate-900/90 border border-slate-800 p-3.5 sm:p-4 rounded-2xl border-l-4 border-l-rose-500 shadow-md">
+                  <div className="text-xs uppercase font-extrabold text-slate-400">Constraints</div>
+                  <p className="text-sm font-semibold text-slate-100 mt-1.5">{currentWarmUp.constraints || 'No additional constraints.'}</p>
                 </div>
               </div>
             ) : activeHUDMode === 'drill' ? (
-              <div className="grid md:grid-cols-3 gap-4">
-                <div className="bg-slate-900/90 border border-slate-800 p-4 rounded-2xl border-l-4 border-l-emerald-500">
-                  <div className="text-xs uppercase font-bold text-slate-400">Drill Name & Goal</div>
-                  <div className="text-base font-bold text-white mt-0.5">{currentDrill.drillName}</div>
-                  <p className="text-sm font-medium text-slate-300 mt-1">{currentDrill.primaryGoal}</p>
+              <div className="grid md:grid-cols-3 gap-3 sm:gap-4">
+                <div className="bg-slate-900/90 border border-slate-800 p-3.5 sm:p-4 rounded-2xl border-l-4 border-l-emerald-500 shadow-md">
+                  <div className="text-xs uppercase font-extrabold text-slate-400">Drill Name & Goal</div>
+                  <div className="text-base sm:text-lg font-black text-white mt-0.5">{currentDrill.drillName}</div>
+                  <p className="text-xs sm:text-sm font-medium text-slate-200 mt-1">{currentDrill.primaryGoal}</p>
                 </div>
-                <div className="bg-slate-900/90 border border-slate-800 p-4 rounded-2xl border-l-4 border-l-amber-500">
-                  <div className="text-xs uppercase font-bold text-slate-400">Drill Constraints</div>
-                  <p className="text-sm font-semibold text-slate-200 mt-1.5">{currentDrill.drillConstraints}</p>
+                <div className="bg-slate-900/90 border border-slate-800 p-3.5 sm:p-4 rounded-2xl border-l-4 border-l-amber-500 shadow-md">
+                  <div className="text-xs uppercase font-extrabold text-slate-400">Drill Constraints</div>
+                  <p className="text-sm font-semibold text-slate-100 mt-1.5">{currentDrill.drillConstraints}</p>
                 </div>
-                <div className="bg-slate-900/90 border border-slate-800 p-4 rounded-2xl border-l-4 border-l-rose-500">
-                  <div className="text-xs uppercase font-bold text-slate-400">Immediate Reset Condition</div>
-                  <p className="text-sm font-semibold text-slate-200 mt-1.5">{currentDrill.immediateReset}</p>
+                <div className="bg-slate-900/90 border border-slate-800 p-3.5 sm:p-4 rounded-2xl border-l-4 border-l-rose-500 shadow-md">
+                  <div className="text-xs uppercase font-extrabold text-slate-400">Immediate Reset Condition</div>
+                  <p className="text-sm font-semibold text-slate-100 mt-1.5">{currentDrill.immediateReset}</p>
                 </div>
               </div>
             ) : (
-              <div className="bg-slate-900/90 border border-slate-800 p-6 rounded-2xl text-center border-l-4 border-l-indigo-500">
-                <h3 className="text-lg font-bold text-indigo-400 uppercase tracking-wider">Live Rounds in Progress</h3>
-                <p className="text-sm text-slate-300 mt-1">Full situational or open sparring rounds according to class belt regulations.</p>
+              <div className="bg-slate-900/90 border border-slate-800 p-5 sm:p-6 rounded-2xl text-center border-l-4 border-l-indigo-500 shadow-md">
+                <h3 className="text-lg sm:text-xl font-black text-indigo-400 uppercase tracking-wider">Live Rounds in Progress</h3>
+                <p className="text-xs sm:text-sm text-slate-300 mt-1 font-medium">Full situational or open sparring rounds according to class belt regulations.</p>
               </div>
             )}
           </footer>
@@ -1735,56 +2100,159 @@ const updateScheduledClass = async (classId: string, updates: Partial<ScheduledC
 
       {/* VIEW 2: LESSON BUILDER */}
       {activeTab === 'builder' && (
-        <main className="flex-1 p-4 md:p-8 max-w-4xl mx-auto w-full">
-          <div className="flex justify-between items-center mb-6">
+        <main className="flex-1 p-4 md:p-8 max-w-4xl mx-auto w-full space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
             <div>
-              <h2 className="text-2xl font-bold">Lesson Plan Builder</h2>
-              <p className="text-sm text-slate-400">Configure class metadata, warm-up routines, drill constraints, and sparring rounds.</p>
+              <div className="flex items-center gap-2">
+                <h2 className="text-2xl font-bold">
+                  {editingLessonId ? 'Edit / Refine Lesson Plan' : 'Lesson Plan Builder'}
+                </h2>
+                {editingLessonId && (
+                  <span className="text-xs bg-amber-500/20 text-amber-400 border border-amber-800/40 px-2 py-0.5 rounded font-bold">
+                    Editing Mode
+                  </span>
+                )}
+              </div>
+              <p className="text-sm text-slate-400">Design curriculum units balanced dynamically against your scheduled class duration.</p>
             </div>
-            <button
-              type="button"
-              disabled={isGenerating}
-              onClick={async () => {
-                setIsGenerating(true);
-                try {
-                  const res = await fetch('/api/generate-lesson', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      concept: builderForm.concept,
-                      ageGroup: builderForm.ageGroup,
-                      beltRank: builderForm.beltRank,
-                      totalDurationMinutes: builderForm.totalDurationMinutes,
-                    }),
-                  });
-                  if (!res.ok) throw new Error('Generation failed');
-                  const aiPlan = await res.json();
-                  const formattedDrills: Drill[] = (aiPlan.drills || []).map((d: Drill, idx: number) => ({
-                    ...d,
-                    id: `ai-drill-${Date.now()}-${idx}`,
-                  }));
 
-                  setBuilderForm((prev) => ({
-                    ...prev,
-                    className: aiPlan.className || prev.className,
-                    tags: aiPlan.tags || prev.tags,
-                    drills: formattedDrills.length > 0 ? formattedDrills : prev.drills,
-                    liveRounds: aiPlan.liveRounds || prev.liveRounds,
-                  }));
-                } catch {
-                  alert('Failed to connect to the AI model.');
-                } finally {
-                  setIsGenerating(false);
-                }
-              }}
-              className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white px-4 py-2 rounded-xl text-xs md:text-sm font-bold shadow-lg transition"
-            >
-              {isGenerating ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
-              {isGenerating ? 'Designing Session...' : 'AI Black Belt Suggest'}
-            </button>
+            <div className="flex items-center gap-2">
+              {editingLessonId && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingLessonId(null);
+                    setBuilderForm({
+                      className: '', concept: BASELINE_CONCEPTS[0], ageGroup: 'Adults', beltRank: 'White Belt',
+                      totalDurationMinutes: 60, tags: ['Fundamentals'], isPublic: false, warmUp: BASELINE_WARMUPS[0],
+                      flow: null, drills: [builderForm.drills[0]], liveRounds: { roundCount: 5, roundTimeSeconds: 300, restTimeSeconds: 60 }
+                    });
+                  }}
+                  className="px-3 py-1.5 rounded-xl border border-slate-700 bg-slate-800 text-xs font-semibold hover:bg-slate-700 text-slate-300"
+                >
+                  Clear / New
+                </button>
+              )}
+
+              <button
+                type="button"
+                disabled={isGenerating}
+                onClick={async () => {
+                  setIsGenerating(true);
+                  try {
+                    const res = await fetch('/api/generate-lesson', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        concept: builderForm.concept,
+                        ageGroup: builderForm.ageGroup,
+                        beltRank: builderForm.beltRank,
+                        totalDurationMinutes: targetDuration,
+                      }),
+                    });
+                    if (!res.ok) throw new Error('Generation failed');
+                    const aiPlan = await res.json();
+                    const formattedDrills: Drill[] = (aiPlan.drills || []).map((d: Drill, idx: number) => ({
+                      ...d,
+                      id: `ai-drill-${Date.now()}-${idx}`,
+                    }));
+
+                    setBuilderForm((prev) => ({
+                      ...prev,
+                      className: aiPlan.className || prev.className,
+                      tags: aiPlan.tags || prev.tags,
+                      drills: formattedDrills.length > 0 ? formattedDrills : prev.drills,
+                      liveRounds: aiPlan.liveRounds || prev.liveRounds,
+                    }));
+                  } catch {
+                    alert('Failed to connect to the AI model.');
+                  } finally {
+                    setIsGenerating(false);
+                  }
+                }}
+                className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white px-4 py-2 rounded-xl text-xs md:text-sm font-bold shadow-lg transition"
+              >
+                {isGenerating ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
+                {isGenerating ? 'Designing...' : 'AI Black Belt Suggest'}
+              </button>
+            </div>
           </div>
 
-          <form onSubmit={handleCreatePlan} className="space-y-6">
+          {/* DYNAMIC CLASS CONTEXT & PACING BAR */}
+          <div className="bg-slate-900/80 border border-slate-800 p-5 rounded-2xl space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <span className="text-xs font-bold text-slate-400 uppercase">Target Scheduled Class (Calendar Link)</span>
+                <select
+                  value={targetClassId}
+                  onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
+                    const val = e.target.value;
+                    setTargetClassId(val);
+                    const match = schedule.find(s => s.id === val);
+                    if (match) {
+                      setBuilderForm(prev => ({
+                        ...prev,
+                        ageGroup: match.ageGroup,
+                        totalDurationMinutes: match.durationMinutes
+                      }));
+                    }
+                  }}
+                  className="w-full sm:w-auto mt-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-emerald-400 focus:outline-none"
+                >
+                  <option value="">No Calendar Link (Manual Duration)</option>
+                  {schedule.map((sc: ScheduledClass) => (
+                    <option key={sc.id} value={sc.id}>
+                      {sc.dateStr} • {sc.time} - {sc.title} ({sc.durationMinutes}m)
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="text-right">
+                <span className="text-xs font-bold text-slate-400 uppercase">Class Duration Target</span>
+                <div className="text-xl font-black text-white">{targetDuration} Minutes</div>
+              </div>
+            </div>
+
+            {/* LIVE PACING BUDGET BREAKDOWN */}
+            <div className="pt-3 border-t border-slate-800/80 space-y-2">
+              <div className="flex justify-between items-center text-xs font-bold">
+                <span className="text-slate-400">Curriculum Pacing Budget:</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-300">{totalPlannedMinutes}m Planned</span>
+                  <span className={`px-2 py-0.5 rounded text-[11px] font-black ${
+                    pacingDifference === 0 ? 'bg-emerald-500/20 text-emerald-400' :
+                    pacingDifference > 0 ? 'bg-cyan-500/20 text-cyan-300' :
+                    'bg-rose-500/20 text-rose-400'
+                  }`}>
+                    {pacingDifference === 0 ? 'Balanced' :
+                     pacingDifference > 0 ? `${pacingDifference}m Available` :
+                     `${Math.abs(pacingDifference)}m Over Budget`}
+                  </span>
+                </div>
+              </div>
+
+              <div className="w-full bg-slate-950 h-3 rounded-full overflow-hidden flex border border-slate-800">
+                <div style={{ width: `${Math.min(100, (warmUpMinutes / targetDuration) * 100)}%` }} title={`Warm-Up: ${warmUpMinutes}m`} className="bg-orange-500 transition-all duration-300" />
+                {builderForm.flow && (
+                  <div style={{ width: `${Math.min(100, (flowMinutes / targetDuration) * 100)}%` }} title={`Flow Chain: ${flowMinutes}m`} className="bg-cyan-500 transition-all duration-300" />
+                )}
+                <div style={{ width: `${Math.min(100, (drillsMinutes / targetDuration) * 100)}%` }} title={`Drills: ${drillsMinutes}m`} className="bg-emerald-500 transition-all duration-300" />
+                <div style={{ width: `${Math.min(100, (liveRoundsMinutes / targetDuration) * 100)}%` }} title={`Sparring: ${liveRoundsMinutes}m`} className="bg-indigo-500 transition-all duration-300" />
+              </div>
+
+              <div className="flex items-center gap-4 text-[11px] text-slate-400 pt-1 flex-wrap">
+                <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-orange-500" /> Warm-Up: {warmUpMinutes}m</span>
+                {builderForm.flow && (
+                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-cyan-500" /> Flow Chain: {flowMinutes}m</span>
+                )}
+                <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500" /> Drills: {drillsMinutes}m</span>
+                <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-indigo-500" /> Sparring: {liveRoundsMinutes}m</span>
+              </div>
+            </div>
+          </div>
+
+          <form onSubmit={(e) => { e.preventDefault(); handleSaveLessonPlan(false, false); }} className="space-y-6">
             <div className="bg-slate-900/50 border border-slate-800 p-5 rounded-2xl grid sm:grid-cols-2 gap-4">
               <div>
                 <div className="flex justify-between items-center mb-1">
@@ -1939,23 +2407,6 @@ const updateScheduledClass = async (classId: string, updates: Partial<ScheduledC
                 />
               </div>
 
-              {builderForm.warmUp.type === 'game' && (
-                <div className="grid sm:grid-cols-3 gap-4 pt-2 border-t border-slate-800/80">
-                  <div>
-                    <label className="text-xs font-semibold text-slate-400 uppercase">Game Rules</label>
-                    <textarea rows={2} value={builderForm.warmUp.gameRules || ''} onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setBuilderForm({ ...builderForm, warmUp: { ...builderForm.warmUp, gameRules: e.target.value } })} className="w-full mt-1 bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs" />
-                  </div>
-                  <div>
-                    <label className="text-xs font-semibold text-slate-400 uppercase">Constraints</label>
-                    <textarea rows={2} value={builderForm.warmUp.constraints || ''} onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setBuilderForm({ ...builderForm, warmUp: { ...builderForm.warmUp, constraints: e.target.value } })} className="w-full mt-1 bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs" />
-                  </div>
-                  <div>
-                    <label className="text-xs font-semibold text-slate-400 uppercase">Goals</label>
-                    <textarea rows={2} value={builderForm.warmUp.goals || ''} onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setBuilderForm({ ...builderForm, warmUp: { ...builderForm.warmUp, goals: e.target.value } })} className="w-full mt-1 bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs" />
-                  </div>
-                </div>
-              )}
-
               <div className="pt-3 border-t border-slate-800/80 grid grid-cols-3 gap-3">
                 <div>
                   <span className="text-[11px] text-slate-500">Rounds</span>
@@ -1970,6 +2421,56 @@ const updateScheduledClass = async (classId: string, updates: Partial<ScheduledC
                   <input type="number" value={builderForm.warmUp.restTimeSeconds} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setBuilderForm({ ...builderForm, warmUp: { ...builderForm.warmUp, restTimeSeconds: Number(e.target.value) } })} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white" />
                 </div>
               </div>
+            </div>
+
+            {/* FLOW CHAIN SECTION IN BUILDER */}
+            <div className="bg-slate-900/60 border border-cyan-900/40 p-5 rounded-2xl space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
+                <div className="flex items-center gap-2">
+                  <GitBranch size={20} className="text-cyan-400" />
+                  <h3 className="text-lg font-bold text-white">Tactical Flow Chain (Optional)</h3>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <select
+                    value={builderForm.flow ? builderForm.flow.id : ''}
+                    onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
+                      const val = e.target.value;
+                      if (!val) {
+                        setBuilderForm({ ...builderForm, flow: null });
+                      } else {
+                        const found = flowLibrary.find(f => f.id === val);
+                        if (found) setBuilderForm({ ...builderForm, flow: { ...found } });
+                      }
+                    }}
+                    className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-cyan-300 font-bold focus:outline-none"
+                  >
+                    <option value="">None (No Flow Chain)</option>
+                    {flowLibrary.map(f => (
+                      <option key={f.id} value={f.id}>{f.title}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {builderForm.flow ? (
+                <div className="bg-slate-950 border border-slate-800 p-4 rounded-xl space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-bold text-white">{builderForm.flow.title}</span>
+                    <span className="text-xs text-cyan-400 font-semibold">{builderForm.flow.roundCount} Rounds &times; {builderForm.flow.roundTimeSeconds}s</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {builderForm.flow.nodes.map((n, i) => (
+                      <React.Fragment key={n.id}>
+                        <span className="text-[11px] bg-slate-900 border border-slate-800 px-2 py-0.5 rounded text-slate-300">{n.techniqueName}</span>
+                        {i < builderForm.flow!.nodes.length - 1 && <ArrowRight size={11} className="text-cyan-400" />}
+                      </React.Fragment>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs text-slate-500 italic">No flow chain attached. Select one from your library above to include a connected decision tree.</p>
+              )}
             </div>
 
             {/* DRILLS BLOCK SECTION */}
@@ -2046,7 +2547,7 @@ const updateScheduledClass = async (classId: string, updates: Partial<ScheduledC
               </div>
             </div>
 
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-2">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-slate-800">
               <label className="flex items-center gap-3 cursor-pointer">
                 <input type="checkbox" checked={builderForm.isPublic} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setBuilderForm({ ...builderForm, isPublic: e.target.checked })} className="w-4 h-4 rounded text-emerald-500 bg-slate-950 border-slate-800" />
                 <span className="text-sm font-medium flex items-center gap-1.5">
@@ -2055,9 +2556,32 @@ const updateScheduledClass = async (classId: string, updates: Partial<ScheduledC
                 </span>
               </label>
 
-              <button type="submit" className="w-full sm:w-auto px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl shadow-lg flex items-center justify-center gap-2">
-                <PlusCircle size={18} /> Save & Load to Mat HUD
-              </button>
+              <div className="flex items-center gap-2 flex-wrap">
+                {editingLessonId && (
+                  <button
+                    type="button"
+                    onClick={() => handleSaveLessonPlan(true, false)}
+                    className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl text-xs flex items-center gap-1.5"
+                  >
+                    <Copy size={14} /> Save as New Lesson
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => handleSaveLessonPlan(false, true)}
+                  className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-xs flex items-center gap-1.5"
+                >
+                  <CalendarIcon size={14} /> Save & Schedule
+                </button>
+
+                <button
+                  type="submit"
+                  className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs shadow-lg flex items-center gap-2"
+                >
+                  <Check size={16} /> {editingLessonId ? 'Update Lesson' : 'Save & Run on Mat'}
+                </button>
+              </div>
             </div>
           </form>
         </main>
@@ -2070,7 +2594,7 @@ const updateScheduledClass = async (classId: string, updates: Partial<ScheduledC
             <div>
               <h2 className="text-2xl font-bold">Curriculum Hub</h2>
               <p className="text-sm text-slate-400">
-                {hubSection === 'lessons' ? 'Organized by core concepts. Filter by technique tags or search keywords.' : 'Library of general flows and paired exploratory warm-up games.'}
+                {hubSection === 'lessons' ? 'Select lessons to edit, clone into the builder, or directly schedule on the academy calendar.' : 'Library of general flows and paired exploratory warm-up games.'}
               </p>
             </div>
 
@@ -2124,17 +2648,48 @@ const updateScheduledClass = async (classId: string, updates: Partial<ScheduledC
                                 <span className="text-xs font-bold text-emerald-400 bg-emerald-950/40 border border-emerald-800/40 px-2 py-0.5 rounded">{p.ageGroup} • {p.beltRank}</span>
                                 <h4 className="font-bold text-base text-white mt-2">{p.className}</h4>
                                 <div className="text-xs text-slate-400 mt-1">Instructor: {p.authorName}</div>
+                                
                                 <div className="mt-3 space-y-1">
                                   <div className="text-xs font-bold text-orange-400 uppercase">Warm-Up: {p.warmUp?.warmUpName}</div>
+                                  {p.flow && (
+                                    <div className="text-xs font-bold text-cyan-400 uppercase flex items-center gap-1">
+                                      <GitBranch size={11} /> Flow: {p.flow.title}
+                                    </div>
+                                  )}
                                   <div className="text-xs font-bold text-slate-400 uppercase mt-2">Drills ({p.drills.length}):</div>
                                   <ul className="text-xs text-slate-300 list-disc list-inside">
                                     {p.drills.map((d: Drill) => (<li key={d.id}>{d.drillName}</li>))}
                                   </ul>
                                 </div>
                               </div>
-                              <div className="mt-5 pt-3 border-t border-slate-800 flex justify-between items-center">
+
+                              <div className="mt-5 pt-3 border-t border-slate-800 flex justify-between items-center flex-wrap gap-2">
                                 <span className="text-xs text-slate-400">{p.liveRounds.roundCount} Sparring Rounds</span>
-                                <button onClick={() => loadPlanToMat(p)} className="bg-emerald-600/20 text-emerald-400 border border-emerald-600/40 hover:bg-emerald-600 hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1"><Play size={13} />Run on Mat</button>
+                                
+                                <div className="flex items-center gap-1.5">
+                                  <button
+                                    onClick={() => handleEditLessonFromHub(p)}
+                                    title="Edit or Clone in Lesson Builder"
+                                    className="p-1.5 text-slate-400 hover:text-white rounded-lg bg-slate-900 border border-slate-800 hover:bg-slate-800 text-xs font-semibold flex items-center gap-1"
+                                  >
+                                    <Edit3 size={13} /> Edit
+                                  </button>
+
+                                  <button
+                                    onClick={() => handleOpenScheduleForLesson(p.id)}
+                                    title="Schedule on Calendar"
+                                    className="p-1.5 text-indigo-400 hover:text-white rounded-lg bg-indigo-950/40 border border-indigo-800/40 hover:bg-indigo-600 text-xs font-semibold flex items-center gap-1"
+                                  >
+                                    <CalendarIcon size={13} /> Schedule
+                                  </button>
+
+                                  <button
+                                    onClick={() => loadPlanToMat(p)}
+                                    className="bg-emerald-600/20 text-emerald-400 border border-emerald-600/40 hover:bg-emerald-600 hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1"
+                                  >
+                                    <Play size={13} /> Run on Mat
+                                  </button>
+                                </div>
                               </div>
                             </div>
                           ))}
@@ -2227,11 +2782,20 @@ const updateScheduledClass = async (classId: string, updates: Partial<ScheduledC
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-400 uppercase">Core Concept Track</label>
+                <div className="flex justify-between items-center mb-1">
+                  <label className="text-xs font-semibold text-slate-400 uppercase">Core Concept Track</label>
+                  <button
+                    type="button"
+                    onClick={() => setIsNewConceptModalOpen(true)}
+                    className="text-[11px] font-bold text-cyan-400 hover:text-cyan-300 flex items-center gap-1"
+                  >
+                    <Plus size={12} /> New Concept
+                  </button>
+                </div>
                 <select
                   value={activeFlowInStudio.concept}
                   onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setActiveFlowInStudio({ ...activeFlowInStudio, concept: e.target.value })}
-                  className="w-full mt-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white font-bold"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-cyan-300 font-bold focus:outline-none focus:border-cyan-500"
                 >
                   {coreConcepts.map((c: string) => (<option key={c} value={c}>{c}</option>))}
                 </select>
@@ -2422,7 +2986,7 @@ const updateScheduledClass = async (classId: string, updates: Partial<ScheduledC
               <h2 className="text-2xl font-bold flex items-center gap-2">
                 <CalendarIcon size={22} className="text-emerald-400" /> Academy Schedule & Pacing
               </h2>
-              <p className="text-sm text-slate-400">Plan classes by real calendar dates, assign coaches, and record class debriefs.</p>
+              <p className="text-sm text-slate-400">Plan classes by real calendar dates, assign curriculum units, and log class debriefs.</p>
             </div>
             <button onClick={() => setIsTemplateManagerOpen(true)} className="bg-slate-900 border border-slate-700 hover:bg-slate-800 px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 text-slate-200">
               <PlusCircle size={15} className="text-emerald-400" /> Class Templates ({classTemplates.length})
@@ -2477,8 +3041,31 @@ const updateScheduledClass = async (classId: string, updates: Partial<ScheduledC
                             <div className="flex items-center gap-2 mb-1 flex-wrap">
                               <span className="text-xs font-black px-2 py-0.5 rounded bg-slate-800 text-slate-200">{cl.time}</span>
                               <h4 className="font-bold text-base text-white">{cl.title}</h4>
+                              <span className="text-xs text-slate-400">({cl.durationMinutes}m)</span>
+                            </div>
+
+                            {/* CURRICULUM LESSON SELECTOR FOR THIS SCHEDULE SLOT */}
+                            <div className="flex items-center gap-2 mt-2 flex-wrap">
+                              <span className="text-xs font-bold text-slate-400 shrink-0">Assigned Lesson:</span>
+                              <SearchableLessonPicker
+                                lessons={plans}
+                                selectedLessonId={cl.assignedLessonId}
+                                onSelect={(val) => updateScheduledClass(cl.id, { assignedLessonId: val })}
+                                placeholder="Search & assign lesson..."
+                              />
+
+                              {assignedPlan && (
+                                <button
+                                  onClick={() => handleEditLessonFromHub(assignedPlan)}
+                                  title="Edit lesson in Lesson Builder"
+                                  className="p-1.5 text-slate-400 hover:text-white rounded-lg bg-slate-900 border border-slate-800 hover:bg-slate-800"
+                                >
+                                  <Edit3 size={13} />
+                                </button>
+                              )}
                             </div>
                           </div>
+
                           <div className="flex items-center gap-3">
                             {assignedPlan && (
                               <button onClick={() => loadPlanToMat(assignedPlan)} className="bg-emerald-600 hover:bg-emerald-500 text-white px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5"><Play size={13} />Run on Mat</button>
@@ -2487,7 +3074,7 @@ const updateScheduledClass = async (classId: string, updates: Partial<ScheduledC
                           </div>
                         </div>
 
-<div className="grid md:grid-cols-2 gap-4 pt-1">
+                        <div className="grid md:grid-cols-2 gap-4 pt-1">
                           <div>
                             <label className="text-[11px] font-semibold text-slate-400 uppercase">Class Debrief Notes (Persisted)</label>
                             <textarea 
@@ -2555,6 +3142,7 @@ const updateScheduledClass = async (classId: string, updates: Partial<ScheduledC
                       <button
                         onClick={() => {
                           const lData = msg.actionPayload!.lessonData;
+                          setEditingLessonId(null);
                           setBuilderForm((prev) => ({
                             ...prev,
                             className: lData.className || prev.className,
@@ -2805,20 +3393,49 @@ const updateScheduledClass = async (classId: string, updates: Partial<ScheduledC
         </div>
       )}
 
-      {/* ADD CLASS MODAL */}
+      {/* ADD / SCHEDULE CLASS MODAL */}
       {isAddClassModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl max-w-md w-full shadow-2xl space-y-4">
             <div className="flex justify-between items-center border-b border-slate-800 pb-3">
-              <h3 className="font-bold text-lg text-white">Add Class ({targetDateForNewClass})</h3>
+              <h3 className="font-bold text-lg text-white">Schedule Class</h3>
               <button onClick={() => setIsAddClassModalOpen(false)} className="text-slate-400 hover:text-white"><X size={18} /></button>
             </div>
             <form onSubmit={handleScheduleNewClass} className="space-y-4">
-              <select value={selectedTemplateForNewClass} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedTemplateForNewClass(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm">
-                {classTemplates.map((ct: ClassTemplate) => (<option key={ct.id} value={ct.id}>{ct.name}</option>))}
-              </select>
-              <input type="text" required placeholder="06:00 PM" value={newClassTime} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewClassTime(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm" />
-              <button type="submit" className="w-full py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white">Add Class</button>
+              <div>
+                <label className="text-xs font-semibold text-slate-400 uppercase">Class Date</label>
+                <input
+                  type="date"
+                  required
+                  value={targetDateForNewClass}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTargetDateForNewClass(e.target.value)}
+                  className="w-full mt-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-400 uppercase">Class Template</label>
+                <select value={selectedTemplateForNewClass} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedTemplateForNewClass(e.target.value)} className="w-full mt-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white">
+                  {classTemplates.map((ct: ClassTemplate) => (<option key={ct.id} value={ct.id}>{ct.name} ({ct.durationMinutes}m)</option>))}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-400 uppercase">Start Time</label>
+                <input type="text" required placeholder="06:00 PM" value={newClassTime} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewClassTime(e.target.value)} className="w-full mt-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white" />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-400 uppercase mb-1 block">Assign Curriculum Lesson</label>
+                <SearchableLessonPicker
+                  lessons={plans}
+                  selectedLessonId={newClassLessonId || null}
+                  onSelect={(val) => setNewClassLessonId(val || '')}
+                  placeholder="Search and select curriculum lesson..."
+                />
+              </div>
+
+              <button type="submit" className="w-full py-2.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white">Save Class to Calendar</button>
             </form>
           </div>
         </div>
