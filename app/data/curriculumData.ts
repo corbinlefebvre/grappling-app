@@ -1,68 +1,8 @@
-// --- DATA CONTRACTS ---
-export interface WarmUp {
-  id?: string;
-  warmUpName: string;
-  type: 'general' | 'game';
-  description: string;
-  gameRules?: string;
-  constraints?: string;
-  goals?: string;
-  roundCount: number;
-  roundTimeSeconds: number;
-  restTimeSeconds: number;
-  isCustom?: boolean;
-}
+// app/data/curriculumData.ts
 
-export interface Drill {
-  id: string;
-  drillName: string;
-  drillConstraints: string;
-  primaryGoal: string;
-  immediateReset: string;
-  roundCount: number;
-  roundTimeSeconds: number;
-  restTimeSeconds: number;
-}
+import { Instructor, WarmUp, FlowRoutine, LessonPlan, ClassTemplate, WeeklyTaxonomy } from '../types';
 
-export interface FlowNode {
-  id: string;
-  techniqueName: string;
-  opponentDefenseTrigger: string;
-  transitionCue: string;
-}
-
-export interface FlowRoutine {
-  id: string;
-  title: string;
-  concept: string;
-  startingPosition: string;
-  roundCount: number;
-  roundTimeSeconds: number;
-  restTimeSeconds: number;
-  nodes: FlowNode[];
-}
-
-export interface LessonPlan {
-  id: string;
-  className: string;
-  concept: string;
-  ageGroup: string;
-  beltRank: string;
-  totalDurationMinutes: number;
-  tags: string[];
-  warmUp: WarmUp;
-  drills: Drill[];
-  liveRounds: {
-    roundCount: number;
-    roundTimeSeconds: number;
-    restTimeSeconds: number;
-  };
-  isPublic: boolean;
-  authorInstructorId: string;
-  authorName: string;
-}
-
-export const BASELINE_CONCEPTS = [
+export const BASELINE_CONCEPTS: string[] = [
   'Closed Guard Dominance (Roger Gracie System)',
   'Half Guard & Chest Camping (Gordon Ryan System)',
   'Butterfly & X-Guard Dynamics (Marcelo Garcia System)',
@@ -124,6 +64,7 @@ export const BASELINE_FLOWS: FlowRoutine[] = [
     roundCount: 4,
     roundTimeSeconds: 180,
     restTimeSeconds: 30,
+    isPublic: true,
     nodes: [
       {
         id: 'rg-1',
@@ -165,6 +106,7 @@ export const BASELINE_FLOWS: FlowRoutine[] = [
     roundCount: 4,
     roundTimeSeconds: 180,
     restTimeSeconds: 30,
+    isPublic: true,
     nodes: [
       {
         id: 'gr-1',
@@ -191,148 +133,26 @@ export const BASELINE_FLOWS: FlowRoutine[] = [
         transitionCue: 'Step outside foot over trapped ankle, windshield-wiper legs, slide both knees into armpit mount.'
       }
     ]
-  },
-  {
-    id: 'flow-marcelo-butterfly',
-    title: 'Butterfly Sweep to Single Leg X & Front Strangle (Marcelo Garcia)',
-    concept: 'Butterfly & X-Guard Dynamics (Marcelo Garcia System)',
-    startingPosition: 'Seated Butterfly Guard',
-    roundCount: 4,
-    roundTimeSeconds: 180,
-    restTimeSeconds: 30,
-    nodes: [
-      {
-        id: 'mg-1',
-        techniqueName: 'Butterfly Elevator Sweep',
-        opponentDefenseTrigger: 'Opponent extends opposite leg wide to base out and maintain upright posture.',
-        transitionCue: 'Drop your elevation hook, shoot lead shin behind their knee into Single Leg X-Guard.'
-      },
-      {
-        id: 'mg-2',
-        techniqueName: 'Single Leg X Technical Standup',
-        opponentDefenseTrigger: 'Opponent drops hips low and drives hands into your chest to crush leg extension.',
-        transitionCue: 'Transfer far foot to opposite hip crease, extend through both feet into Full X-Guard.'
-      },
-      {
-        id: 'mg-3',
-        techniqueName: 'X-Guard Stretch to Forward Knockdown',
-        opponentDefenseTrigger: 'Opponent hands touch mat as they get pushed forward, leaving neck exposed.',
-        transitionCue: 'Retract legs, technical standup immediately with chin strap control into High-Elbow Guillotine.'
-      },
-      {
-        id: 'mg-4',
-        techniqueName: 'Marcelotine (High-Elbow Guillotine)',
-        opponentDefenseTrigger: 'Opponent drops to knees and taps.',
-        transitionCue: 'Throw elbow high over opponent shoulder, crunch ribs into chin, drive hips forward to finish.'
-      }
-    ]
-  },
-  {
-    id: 'flow-lachlan-kguard',
-    title: 'K-Guard Entry to Backside 50/50 Heel Hook (Lachlan Giles)',
-    concept: 'K-Guard & 50/50 Heel Hooks (Lachlan Giles System)',
-    startingPosition: 'Open Guard / Collar-Sleeve',
-    roundCount: 4,
-    roundTimeSeconds: 180,
-    restTimeSeconds: 30,
-    nodes: [
-      {
-        id: 'lg-1',
-        techniqueName: 'K-Guard Frame & Knee Insertion',
-        opponentDefenseTrigger: 'Opponent squares hips and steps standing lead leg forward to pressure over your guard.',
-        transitionCue: 'Scoop arm under standing thigh, insert top knee behind far knee crease, bite down with hamstring.'
-      },
-      {
-        id: 'lg-2',
-        techniqueName: 'Inversion to Backside 50/50',
-        opponentDefenseTrigger: 'Opponent turns away to prevent straight knee-bar and steps over with far leg.',
-        transitionCue: 'Invert completely over your shoulder, wrap outside leg across hip, lock feet into Backside 50/50.'
-      },
-      {
-        id: 'lg-3',
-        techniqueName: 'Heel Exposure Digging',
-        opponentDefenseTrigger: 'Opponent points toes and hides heel in their own thigh or rolls with the pressure.',
-        transitionCue: 'Trap secondary leg with your foot (double trouble), use wrist blade to scoop exposed calcaneus.'
-      },
-      {
-        id: 'lg-4',
-        techniqueName: 'Inside Heel Hook Breaking Mechanic',
-        opponentDefenseTrigger: 'Opponent taps.',
-        transitionCue: 'Clamp wrist tight to ribs, rotate shoulders while keeping partner knee line completely locked.'
-      }
-    ]
-  },
-  {
-    id: 'flow-danaher-back',
-    title: 'Straight Jacket System & Hand Fighting (John Danaher)',
-    concept: 'Back Trapping & Straight Jacket (John Danaher System)',
-    startingPosition: 'Back Control / Seatbelt',
-    roundCount: 4,
-    roundTimeSeconds: 180,
-    restTimeSeconds: 30,
-    nodes: [
-      {
-        id: 'jd-1',
-        techniqueName: 'Seatbelt Diagonal Control',
-        opponentDefenseTrigger: 'Opponent uses two hands to peel your choking arm and rotates shoulders toward the mat.',
-        transitionCue: 'Transition your underhook hand to grip their wrist; fall to the underhook side.'
-      },
-      {
-        id: 'jd-2',
-        techniqueName: 'Straight Jacket Arm Trap',
-        opponentDefenseTrigger: 'Opponent defends neck with secondary hand.',
-        transitionCue: 'Use your top leg to step over opponent wrist and scrape it down to trap it behind their ribs.'
-      },
-      {
-        id: 'jd-3',
-        techniqueName: 'Rear Naked Strangle Closure',
-        opponentDefenseTrigger: 'Opponent tucks chin hard against their chest.',
-        transitionCue: 'Slide choking wrist under chin using rotational blade, lock hand behind opponent neck.'
-      }
-    ]
-  },
-  {
-    id: 'flow-musumeci-retention',
-    title: 'Pummeling & Inversion Guard Retention (Mikey Musumeci)',
-    concept: 'Open Guard Retention & Framing (Mikey Musumeci System)',
-    startingPosition: 'Seated Collar-Sleeve Guard',
-    roundCount: 4,
-    roundTimeSeconds: 180,
-    restTimeSeconds: 30,
-    nodes: [
-      {
-        id: 'mm-1',
-        techniqueName: 'High Knee Frame Retention',
-        opponentDefenseTrigger: 'Opponent executes an aggressive Torreando bullfighter pass around your feet.',
-        transitionCue: 'High-pummel top knee directly into opponent bicep, clear hip line, re-establish double feet on hips.'
-      },
-      {
-        id: 'mm-2',
-        techniqueName: 'Granby Inversion Recovery',
-        opponentDefenseTrigger: 'Opponent drives hip pressure forward before your foot touches their hip.',
-        transitionCue: 'Invert across the upper shoulders, reach far hamstring behind their head, roll through to face them.'
-      },
-      {
-        id: 'mm-3',
-        techniqueName: 'Shovel Hook Sweep Counter',
-        opponentDefenseTrigger: 'Opponent drops to knees to crush inversion.',
-        transitionCue: 'Insert both shovel hooks under their insteps and extend through hips to overturn partner.'
-      }
-    ]
   }
 ];
 
-// --- 6-MONTH (26 WEEKS) SYSTEMATIC CURRICULAR TAXONOMY ---
-interface WeeklyTaxonomy {
-  weekNum: number;
-  monthNum: number;
-  themeTitle: string;
-  concept: string;
-  lineage: string;
-  techniqueThemes: string[];
-}
+export const INITIAL_INSTRUCTORS_SEED: Instructor[] = [
+  { id: 'inst-1', username: 'owner', password: 'password123', name: 'Chief Instructor', email: 'owner@matops.com', role: 'owner', rank: 'Black Belt', bio: 'Head Coach and Program Director.' },
+  { id: 'inst-2', username: 'mvance', password: 'password123', name: 'Marcus Vance', email: 'marcus@matops.com', role: 'manager', rank: 'Brown Belt', bio: 'Senior Instructor.' },
+  { id: 'inst-3', username: 'sarah_bjj', password: 'password123', name: 'Sarah Jenkins', email: 'sarah@matops.com', role: 'instructor', rank: 'Purple Belt', bio: 'Fundamentals Lead.' },
+  { id: 'inst-4', username: 'alex_coach', password: 'password123', name: 'Alex Rivera', email: 'alex@matops.com', role: 'assistant', rank: 'Blue Belt', bio: 'Assistant Coach.' },
+];
 
-const SIX_MONTH_TAXONOMY: WeeklyTaxonomy[] = [
+export const INITIAL_CLASS_TEMPLATES_SEED: ClassTemplate[] = [
+  { id: 'ct-1', name: 'Adult Fundamental Gi', ageGroup: 'Adults', durationMinutes: 60 },
+  { id: 'ct-2', name: 'Youth BJJ Dynamics', ageGroup: 'Ages 7-12', durationMinutes: 45 },
+  { id: 'ct-3', name: 'Advanced No-Gi & Sparring', ageGroup: 'Adults', durationMinutes: 75 },
+  { id: 'ct-4', name: 'Tiny Champions Movement', ageGroup: 'Ages 3-6', durationMinutes: 30 },
+  { id: 'ct-5', name: 'Weekend Open Mat', ageGroup: 'All Levels', durationMinutes: 90 },
+];
+
+// --- 6-MONTH (26 WEEKS) SYSTEMATIC CURRICULAR TAXONOMY ---
+export const SIX_MONTH_TAXONOMY: WeeklyTaxonomy[] = [
   // MONTH 1: CLOSED GUARD DOMINANCE (ROGER GRACIE)
   { weekNum: 1, monthNum: 1, themeTitle: 'Posture Breaking & 2-on-1 Sleeve Drag', concept: 'Closed Guard Dominance (Roger Gracie System)', lineage: 'Roger Gracie', techniqueThemes: ['Sleeve Drag to High Diamond Guard', 'Posture Collapse & Head Control', 'Elbow Isolation Drills', 'Grip Stripping Mechanics', 'Centerline Crossing', 'Diamond Guard Pressure'] },
   { weekNum: 2, monthNum: 1, themeTitle: 'Roger Gracie Cross-Collar Strangle', concept: 'Closed Guard Dominance (Roger Gracie System)', lineage: 'Roger Gracie', techniqueThemes: ['Deep Four-Finger Collar Placement', 'Scissor Hip Tilt Choke', 'Thumb-Inside Anchor', 'Posture Defense Counters', 'Elbow Flaring & Throat Pressure', 'Cross-Choke Trap Variations'] },
@@ -433,6 +253,7 @@ export function generateSixMonthsCurriculum(): LessonPlan[] {
           totalDurationMinutes: profile.duration,
           tags: [week.lineage, 'Week ' + week.weekNum, 'Day ' + (dayIdx + 1), profile.ageGroup],
           warmUp: BASELINE_WARMUPS[wuIndex],
+          flow: null,
           drills: [
             {
               id: `${lessonId}-d1`,
@@ -460,3 +281,5 @@ export function generateSixMonthsCurriculum(): LessonPlan[] {
 
   return generatedPlans;
 }
+
+export const PREBAKED_LESSONS: LessonPlan[] = generateSixMonthsCurriculum();
