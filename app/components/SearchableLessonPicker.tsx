@@ -2,7 +2,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, ChevronDown } from 'lucide-react';
+import { Search, ChevronDown, Sparkles } from 'lucide-react';
 import { LessonPlan } from '../types';
 
 interface SearchableLessonPickerProps {
@@ -31,14 +31,21 @@ export function SearchableLessonPicker({
 
   const filtered = lessons.filter((l) => {
     const matchesSearch =
-      l.className.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      l.concept.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      l.tags.some((t) => t.toLowerCase().includes(searchTerm.toLowerCase()));
+      (l.className || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (l.concept || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (l.tags || []).some((t) => (t || '').toLowerCase().includes(searchTerm.toLowerCase()));
 
     const matchesAge = selectedAge === 'All Ages' || l.ageGroup === selectedAge;
-    const matchesBelt = selectedBelt === 'All Belts' || l.beltRank.includes(selectedBelt.replace(' +', ''));
+    const matchesBelt = selectedBelt === 'All Belts' || (l.beltRank || '').includes(selectedBelt.replace(' +', ''));
 
     return matchesSearch && matchesAge && matchesBelt;
+  });
+
+  const sortedLessons = [...filtered].sort((a, b) => {
+    const timeA = (a.createdAt ? new Date(a.createdAt).getTime() : 0) || (Number((a.id || '').match(/(\d{12,14})/)?.[1]) || 0);
+    const timeB = (b.createdAt ? new Date(b.createdAt).getTime() : 0) || (Number((b.id || '').match(/(\d{12,14})/)?.[1]) || 0);
+    if (timeA !== timeB) return timeB - timeA;
+    return (a.className || '').localeCompare(b.className || '');
   });
 
   useEffect(() => {
@@ -150,34 +157,40 @@ export function SearchableLessonPicker({
               (No Lesson Linked)
             </button>
 
-            {filtered.length === 0 ? (
+            {sortedLessons.length === 0 ? (
               <div className="p-3 text-center text-xs text-slate-500">No matching lessons found</div>
             ) : (
-              filtered.map((l) => (
-                <button
-                  key={l.id}
-                  type="button"
-                  onClick={() => {
-                    onSelect(l.id);
-                    setIsOpen(false);
-                    resetFilters();
-                  }}
-                  className={`w-full text-left px-2 py-1.5 rounded-lg text-xs transition flex flex-col ${
-                    selectedLessonId === l.id
-                      ? 'bg-emerald-950/60 text-emerald-300 font-bold'
-                      : 'text-slate-200 hover:bg-slate-800'
-                  }`}
-                >
-                  <span className="truncate">{l.className}</span>
-                  <div className="text-[10px] text-slate-400 truncate flex items-center gap-1.5 mt-0.5">
-                    <span className="text-slate-300">{l.concept}</span>
-                    <span>&bull;</span>
-                    <span className="text-emerald-400/90">{l.ageGroup}</span>
-                    <span>&bull;</span>
-                    <span className="text-indigo-400/90">{l.beltRank}</span>
-                  </div>
-                </button>
-              ))
+              sortedLessons.map((l) => {
+                const isRecent = ((l.createdAt ? new Date(l.createdAt).getTime() : 0) || (Number((l.id || '').match(/(\d{12,14})/)?.[1]) || 0)) > 0;
+                return (
+                  <button
+                    key={l.id}
+                    type="button"
+                    onClick={() => {
+                      onSelect(l.id);
+                      setIsOpen(false);
+                      resetFilters();
+                    }}
+                    className={`w-full text-left px-2 py-1.5 rounded-lg text-xs transition flex flex-col ${
+                      selectedLessonId === l.id
+                        ? 'bg-emerald-950/60 text-emerald-300 font-bold'
+                        : 'text-slate-200 hover:bg-slate-800'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-1 w-full">
+                      <span className="truncate">{l.className}</span>
+                      {isRecent && <Sparkles size={11} className="text-amber-400 shrink-0" />}
+                    </div>
+                    <div className="text-[10px] text-slate-400 truncate flex items-center gap-1.5 mt-0.5">
+                      <span className="text-slate-300">{l.concept}</span>
+                      <span>&bull;</span>
+                      <span className="text-emerald-400/90">{l.ageGroup}</span>
+                      <span>&bull;</span>
+                      <span className="text-indigo-400/90">{l.beltRank}</span>
+                    </div>
+                  </button>
+                );
+              })
             )}
           </div>
         </div>

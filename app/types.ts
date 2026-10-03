@@ -81,6 +81,7 @@ export interface LessonPlan {
   isPublic: boolean;
   authorInstructorId: string;
   authorName: string;
+  createdAt?: string;
 }
 
 export interface ClassTemplate {
@@ -108,8 +109,9 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   actionPayload?: {
-    action: 'CREATE_CONCEPT' | 'POPULATE_LESSON';
+    action: 'CREATE_CONCEPT' | 'POPULATE_LESSON' | 'POPULATE_WARMUP';
     conceptData?: { conceptName: string } | null;
+    warmUpData?: WarmUp | null;
     lessonData?: any | null;
   };
 }

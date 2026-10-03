@@ -33,8 +33,50 @@ export function CalendarView(props: CalendarViewProps) {
     updateScheduledClass, handleEditLessonFromHub, loadPlanToMat, handleDeleteScheduledClass, formatDateKey
   } = props;
 
+  const today = new Date();
+  const todayKey = formatDateKey(today);
+  const todayWeekday = today.toLocaleDateString('en-US', { weekday: 'long' });
+  const todayFormattedDate = today.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  const classesToday = schedule.filter(s => s.dateStr === todayKey);
+
   return (
     <main className="flex-1 p-4 md:p-8 max-w-5xl mx-auto w-full space-y-6">
+      {/* Prominent Current Day Banner */}
+      <div className="bg-gradient-to-r from-emerald-950/70 via-slate-900 to-slate-900 border border-emerald-500/30 p-5 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-lg shadow-emerald-950/20">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold tracking-wider uppercase bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+              Today
+            </span>
+            <span className="text-xs font-semibold text-slate-400">
+              {todayFormattedDate}
+            </span>
+          </div>
+          <h1 className="text-xl md:text-2xl font-black text-white">
+            Today is <span className="text-emerald-400">{todayWeekday}</span>
+          </h1>
+          <p className="text-xs text-slate-300">
+            {classesToday.length === 0 
+              ? 'No classes scheduled for today yet.' 
+              : `${classesToday.length} class${classesToday.length > 1 ? 'es' : ''} scheduled today (${classesToday.map(c => `${c.title} at ${c.time}`).join('; ')}).`}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => openAddClassModalForDate(todayKey)}
+            className="flex items-center gap-1.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2.5 rounded-xl transition shadow-md shadow-emerald-950/40"
+          >
+            <Plus size={14} /> Add Class For Today
+          </button>
+          <button
+            onClick={() => setCalendarAnchorDate(new Date())}
+            className="text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 px-3.5 py-2.5 rounded-xl border border-slate-700 transition"
+          >
+            Jump to Today
+          </button>
+        </div>
+      </div>
+
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-4">
         <div>
           <h2 className="text-2xl font-bold flex items-center gap-2">
@@ -69,13 +111,19 @@ export function CalendarView(props: CalendarViewProps) {
         {weekDays.map((dayDate) => {
           const dayDateKey = formatDateKey(dayDate);
           const scheduledClassesForDay = schedule.filter(s => s.dateStr === dayDateKey);
+          const isToday = dayDateKey === todayKey;
 
           return (
-            <div key={dayDateKey} className="border border-slate-800 rounded-2xl p-5 space-y-4 bg-slate-900/40">
+            <div key={dayDateKey} className={`border ${isToday ? 'border-emerald-500/50 bg-slate-900/80 ring-1 ring-emerald-500/30' : 'border-slate-800 bg-slate-900/40'} rounded-2xl p-5 space-y-4 transition`}>
               <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
                 <div className="flex items-center gap-3">
                   <h3 className="font-extrabold text-base text-white">{dayDate.toLocaleDateString('en-US', { weekday: 'long' })}</h3>
                   <span className="text-xs font-bold text-emerald-400 bg-emerald-950/40 border border-emerald-800/40 px-2.5 py-0.5 rounded-full">{dayDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                  {isToday && (
+                    <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-500 text-slate-950 px-2 py-0.5 rounded-full shadow-sm">
+                      TODAY
+                    </span>
+                  )}
                 </div>
                 <button onClick={() => openAddClassModalForDate(dayDateKey)} className="flex items-center gap-1.5 text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-xl border border-slate-700">
                   <Plus size={14} className="text-emerald-400" /> Add Class

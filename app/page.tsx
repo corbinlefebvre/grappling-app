@@ -34,7 +34,26 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || '';
 const supabase: SupabaseClient | null = (supabaseUrl && supabaseAnonKey) ? createClient(supabaseUrl, supabaseAnonKey) : null;
 
+const DEFAULT_ACADEMY_ID = '00000000-0000-0000-0000-000000000001';
+
 // --- UTILITY FUNCTIONS ---
+function isValidUUID(id?: string | null): boolean {
+  if (!id) return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+}
+
+function parseTimeString(timeStr: string) {
+  const match = (timeStr || '').match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
+  if (match) {
+    return {
+      hour: match[1].padStart(2, '0'),
+      minute: match[2],
+      period: (match[3] ? match[3].toUpperCase() : 'PM') as 'AM' | 'PM'
+    };
+  }
+  return { hour: '06', minute: '00', period: 'PM' as 'AM' | 'PM' };
+}
+
 function formatDateKey(d: Date): string {
   const y = d.getFullYear(); const m = String(d.getMonth() + 1).padStart(2, '0'); const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
@@ -191,16 +210,9 @@ export default function SubCadenceApp() {
     async function syncAndSeedSupabase() {
       try {
         // 1. LESSONS (With Bulletproof Mapping)
-        const { data: lessonData } = await supabase!.from('lessons').select('*');
-        if (!lessonData || lessonData.length === 0) {
-          const dbLessons = PREBAKED_LESSONS.map(p => ({
-            id: p.id, class_name: p.className, concept: p.concept, age_group: p.ageGroup, belt_rank: p.beltRank,
-            total_duration_minutes: p.totalDurationMinutes, tags: p.tags, warm_up: p.warmUp, flow: p.flow,
-            drills: p.drills, live_rounds: p.liveRounds, is_public: p.isPublic, author_id: p.authorInstructorId, author_name: p.authorName
-          }));
-          await supabase!.from('lessons').insert(dbLessons);
-        } else {
-          const remotePlans = lessonData.map((item: any) => ({
+        const { data: lessonData } = await supabase!.from('lessons').select('*').eq('is_public', true);
+        if (lessonData && lessonData.length > 0) {
+          const remotePlans: LessonPlan[] = lessonData.map((item: any) => ({
             id: item.id || `fallback-${Date.now()}`,
             className: item.class_name || 'Unnamed Lesson', 
             concept: item.concept || 'Uncategorized', 
@@ -209,12 +221,13 @@ export default function SubCadenceApp() {
             totalDurationMinutes: item.total_duration_minutes || 60, 
             tags: item.tags || [], 
             warmUp: item.warm_up || BASELINE_WARMUPS[0], 
-            flow: item.flow || null,
+            flow: null,
             drills: item.drills || [], 
             liveRounds: item.live_rounds || { roundCount: 5, roundTimeSeconds: 300, restTimeSeconds: 60 }, 
-            isPublic: item.is_public || false, 
+            isPublic: item.is_public ?? true, 
             authorInstructorId: item.author_id || 'inst-1', 
-            authorName: item.author_name || 'Coach'
+            authorName: item.author_name || 'Coach',
+            createdAt: item.created_at || (item.id?.match(/(\d{12,14})/) ? new Date(Number(item.id.match(/(\d{12,14})/)![1])).toISOString() : undefined)
           }));
           setPlans(prev => {
             const existingIds = new Set(prev.map(p => p.id));
@@ -223,13 +236,42 @@ export default function SubCadenceApp() {
           });
         }
 
-        // 2. FLOW CHAINS (With Bulletproof Mapping)
+        // 2. SCHEDULES (With Bulletproof Mapping)
+        const { data: scheduleData } = await supabase!.from('schedules').select('*');
+        if (scheduleData && scheduleData.length > 0) {
+          const remoteSchedule: ScheduledClass[] = scheduleData.map((s: any) => ({
+            id: s.id,
+            dateStr: s.date_str,
+            time: s.time_str,
+            title: s.title || 'Scheduled Class',
+            ageGroup: s.age_group || 'Adults',
+            durationMinutes: s.duration_minutes || 60,
+            assignedInstructorId: s.assigned_instructor_id || 'inst-1',
+            assignedLessonId: s.assigned_lesson_id || null,
+            postClassNotes: s.post_class_notes || '',
+            modificationsSuggested: s.modifications_suggested || ''
+          }));
+          setSchedule(prev => {
+            const existingIds = new Set(prev.map(sc => sc.id));
+            const fresh = remoteSchedule.filter(sc => !existingIds.has(sc.id));
+            return [...fresh, ...prev];
+          });
+        }
+
+        // 3. FLOW CHAINS (With Bulletproof Mapping)
         const { data: flowData } = await supabase!.from('flow_routines').select('*');
         if (!flowData || flowData.length === 0) {
           const dbFlows = BASELINE_FLOWS.map(f => ({
-            id: f.id, title: f.title, concept: f.concept, starting_position: f.startingPosition,
-            round_count: f.roundCount, round_time_seconds: f.roundTimeSeconds, rest_time_seconds: f.restTimeSeconds,
-            nodes: f.nodes, is_public: f.isPublic
+            id: f.id,
+            academy_id: DEFAULT_ACADEMY_ID,
+            title: f.title,
+            concept: f.concept,
+            starting_position: f.startingPosition,
+            round_count: f.roundCount,
+            round_time_seconds: f.roundTimeSeconds,
+            rest_time_seconds: f.restTimeSeconds,
+            nodes: f.nodes,
+            is_public: f.isPublic
           }));
           await supabase!.from('flow_routines').insert(dbFlows);
         } else {
@@ -251,19 +293,28 @@ export default function SubCadenceApp() {
           });
         }
 
-        // 3. WARM-UPS (With Bulletproof Mapping)
+        // 4. WARM-UPS (With Bulletproof Mapping)
         const { data: warmupData } = await supabase!.from('warmup_presets').select('*');
         if (!warmupData || warmupData.length === 0) {
           const dbWarmups = BASELINE_WARMUPS.map(w => ({
-            id: w.id, warm_up_name: w.warmUpName, type: w.type, description: w.description,
-            game_rules: w.gameRules, constraints: w.constraints, goals: w.goals,
-            round_count: w.roundCount, round_time_seconds: w.roundTimeSeconds, rest_time_seconds: w.restTimeSeconds, is_custom: w.isCustom
+            id: w.id,
+            academy_id: DEFAULT_ACADEMY_ID,
+            name: w.warmUpName,
+            type: w.type,
+            description: w.description,
+            game_rules: w.gameRules,
+            constraints: w.constraints,
+            goals: w.goals,
+            round_count: w.roundCount,
+            round_time_seconds: w.roundTimeSeconds,
+            rest_time_seconds: w.restTimeSeconds,
+            is_custom: w.isCustom
           }));
           await supabase!.from('warmup_presets').insert(dbWarmups);
         } else {
           const remoteWarmups = warmupData.map((item: any) => ({
             id: item.id || `wu-${Date.now()}`, 
-            warmUpName: item.warm_up_name || 'Unnamed Warmup', 
+            warmUpName: item.name || item.warm_up_name || 'Unnamed Warmup', 
             type: item.type || 'general', 
             description: item.description || '',
             gameRules: item.game_rules || '', 
@@ -281,7 +332,7 @@ export default function SubCadenceApp() {
           });
         }
 
-        // 4. INSTRUCTORS
+        // 5. INSTRUCTORS
         const { data: instructorData } = await supabase!.from('instructors').select('*');
         if (!instructorData || instructorData.length === 0) {
           await supabase!.from('instructors').insert(INITIAL_INSTRUCTORS_SEED);
@@ -457,19 +508,188 @@ export default function SubCadenceApp() {
   const handleSaveLessonPlan = async (isNewClone: boolean, andSchedule: boolean = false) => { 
     if (!currentInstructor) { setIsLoginModalOpen(true); return; } 
     const planId = (editingLessonId && !isNewClone) ? editingLessonId : `plan-${Date.now()}`; 
-    const newOrUpdatedPlan: LessonPlan = { ...builderForm, id: planId, className: isNewClone ? `${builderForm.className} (Copy)` : builderForm.className, authorInstructorId: currentInstructor.id, authorName: currentInstructor.name }; 
+    const existingPlan = plans.find(p => p.id === editingLessonId);
+    const newOrUpdatedPlan: LessonPlan = { 
+      ...builderForm, 
+      id: planId, 
+      className: isNewClone ? `${builderForm.className} (Copy)` : builderForm.className, 
+      authorInstructorId: currentInstructor.id, 
+      authorName: currentInstructor.name,
+      createdAt: (editingLessonId && !isNewClone && existingPlan?.createdAt) ? existingPlan.createdAt : new Date().toISOString()
+    }; 
     
     // Write to Local State
     if (editingLessonId && !isNewClone) setPlans(plans.map(p => p.id === editingLessonId ? newOrUpdatedPlan : p)); else setPlans([newOrUpdatedPlan, ...plans]); 
     
     // Write to Supabase
     if (supabase) {
-      const dbPayload = { id: newOrUpdatedPlan.id, class_name: newOrUpdatedPlan.className, concept: newOrUpdatedPlan.concept, age_group: newOrUpdatedPlan.ageGroup, belt_rank: newOrUpdatedPlan.beltRank, total_duration_minutes: newOrUpdatedPlan.totalDurationMinutes, tags: newOrUpdatedPlan.tags, warm_up: newOrUpdatedPlan.warmUp, flow: newOrUpdatedPlan.flow, drills: newOrUpdatedPlan.drills, live_rounds: newOrUpdatedPlan.liveRounds, is_public: newOrUpdatedPlan.isPublic, author_id: newOrUpdatedPlan.authorInstructorId, author_name: newOrUpdatedPlan.authorName };
-      await supabase.from('lessons').upsert(dbPayload);
+      const dbPayload: any = {
+        id: newOrUpdatedPlan.id,
+        academy_id: DEFAULT_ACADEMY_ID,
+        author_name: newOrUpdatedPlan.authorName || 'Coach',
+        class_name: newOrUpdatedPlan.className,
+        concept: newOrUpdatedPlan.concept,
+        age_group: newOrUpdatedPlan.ageGroup,
+        belt_rank: newOrUpdatedPlan.beltRank,
+        total_duration_minutes: newOrUpdatedPlan.totalDurationMinutes,
+        tags: newOrUpdatedPlan.tags || [],
+        warm_up: newOrUpdatedPlan.warmUp,
+        drills: newOrUpdatedPlan.drills,
+        live_rounds: newOrUpdatedPlan.liveRounds,
+        is_public: true
+      };
+      if (isValidUUID(newOrUpdatedPlan.authorInstructorId)) {
+        dbPayload.author_id = newOrUpdatedPlan.authorInstructorId;
+      }
+      const { error: lessonErr } = await supabase.from('lessons').upsert([dbPayload]);
+      if (lessonErr) {
+        console.warn('Supabase lessons upsert notice:', lessonErr.message);
+      } else {
+        console.log('Lesson successfully persisted to Supabase:', newOrUpdatedPlan.id);
+      }
     }
 
     if (andSchedule) { setSelectedTemplateForNewClass(classTemplates[0]?.id || ''); setNewClassLessonId(newOrUpdatedPlan.id); setIsAddClassModalOpen(true); } 
     else { loadPlanToMat(newOrUpdatedPlan); setEditingLessonId(null); }
+  };
+
+  const handleSaveChatLessonToHub = async (lData: any) => {
+    const planId = `plan-ai-${Date.now()}`;
+    const newPlan: LessonPlan = {
+      id: planId,
+      className: lData.className || 'AI Generated Class',
+      concept: lData.concept || 'Dynamic Concepts',
+      ageGroup: lData.ageGroup || 'Adults',
+      beltRank: lData.beltRank || 'All Ranks',
+      totalDurationMinutes: lData.totalDurationMinutes || 60,
+      tags: lData.tags || ['AI Generated'],
+      warmUp: lData.warmUp ? { ...BASELINE_WARMUPS[0], ...lData.warmUp, id: `ai-wu-${Date.now()}`, isCustom: true } : BASELINE_WARMUPS[0],
+      flow: null,
+      drills: (lData.drills || []).map((d: any, idx: number) => ({ ...d, id: `ai-drill-${Date.now()}-${idx}` })),
+      liveRounds: lData.liveRounds || { roundCount: 4, roundTimeSeconds: 300, restTimeSeconds: 60 },
+      isPublic: true,
+      authorInstructorId: currentInstructor?.id || 'inst-1',
+      authorName: currentInstructor?.name || 'Chief Instructor',
+      createdAt: new Date().toISOString()
+    };
+
+    setPlans((prev) => [newPlan, ...prev]);
+
+    if (supabase) {
+      const dbPayload: any = {
+        id: newPlan.id,
+        academy_id: DEFAULT_ACADEMY_ID,
+        author_name: newPlan.authorName,
+        class_name: newPlan.className,
+        concept: newPlan.concept,
+        age_group: newPlan.ageGroup,
+        belt_rank: newPlan.beltRank,
+        total_duration_minutes: newPlan.totalDurationMinutes,
+        tags: newPlan.tags,
+        warm_up: newPlan.warmUp,
+        drills: newPlan.drills,
+        live_rounds: newPlan.liveRounds,
+        is_public: true
+      };
+      if (isValidUUID(newPlan.authorInstructorId)) {
+        dbPayload.author_id = newPlan.authorInstructorId;
+      }
+      const { error: lessonErr } = await supabase.from('lessons').upsert([dbPayload]);
+      if (lessonErr) {
+        console.warn('Supabase lessons upsert notice:', lessonErr.message);
+      }
+    }
+
+    alert(`Lesson "${newPlan.className}" saved to Curriculum Hub!`);
+  };
+
+  const handleScheduleChatLesson = (lData: any) => {
+    const planId = `plan-ai-${Date.now()}`;
+    const existing = plans.find(p => p.className === lData.className);
+    const assignedId = existing ? existing.id : planId;
+    if (!existing) {
+      const newPlan: LessonPlan = {
+        id: planId,
+        className: lData.className || 'AI Generated Class',
+        concept: lData.concept || 'Dynamic Concepts',
+        ageGroup: lData.ageGroup || 'Adults',
+        beltRank: lData.beltRank || 'All Ranks',
+        totalDurationMinutes: lData.totalDurationMinutes || 60,
+        tags: lData.tags || ['AI Generated'],
+        warmUp: lData.warmUp ? { ...BASELINE_WARMUPS[0], ...lData.warmUp, id: `ai-wu-${Date.now()}`, isCustom: true } : BASELINE_WARMUPS[0],
+        flow: null,
+        drills: (lData.drills || []).map((d: any, idx: number) => ({ ...d, id: `ai-drill-${Date.now()}-${idx}` })),
+        liveRounds: lData.liveRounds || { roundCount: 4, roundTimeSeconds: 300, restTimeSeconds: 60 },
+        isPublic: true,
+        authorInstructorId: currentInstructor?.id || 'inst-1',
+        authorName: currentInstructor?.name || 'Chief Instructor',
+        createdAt: new Date().toISOString()
+      };
+      setPlans((prev) => [newPlan, ...prev]);
+      if (supabase) {
+        const dbPayload: any = {
+          id: newPlan.id,
+          academy_id: DEFAULT_ACADEMY_ID,
+          author_name: newPlan.authorName,
+          class_name: newPlan.className,
+          concept: newPlan.concept,
+          age_group: newPlan.ageGroup,
+          belt_rank: newPlan.beltRank,
+          total_duration_minutes: newPlan.totalDurationMinutes,
+          tags: newPlan.tags,
+          warm_up: newPlan.warmUp,
+          drills: newPlan.drills,
+          live_rounds: newPlan.liveRounds,
+          is_public: true
+        };
+        if (isValidUUID(newPlan.authorInstructorId)) {
+          dbPayload.author_id = newPlan.authorInstructorId;
+        }
+        supabase.from('lessons').upsert([dbPayload]).then(({ error }) => {
+          if (error) console.warn('Lesson upsert notice:', error.message);
+        });
+      }
+    }
+
+    setNewClassLessonId(assignedId);
+    setTargetDateForNewClass(formatDateKey(new Date()));
+    setSelectedTemplateForNewClass(classTemplates[0]?.id || '');
+    setIsAddClassModalOpen(true);
+    setActiveTab('calendar');
+  };
+
+  const handleSaveWarmUpPreset = async (wu: any) => {
+    const newWu: WarmUp = {
+      id: `wu-ai-${Date.now()}`,
+      warmUpName: wu.warmUpName || 'AI Warm-Up',
+      type: (wu.type as 'general' | 'game') || 'game',
+      description: wu.description || '',
+      gameRules: wu.gameRules || '',
+      constraints: wu.constraints || '',
+      goals: wu.goals || '',
+      roundCount: wu.roundCount || 3,
+      roundTimeSeconds: wu.roundTimeSeconds || 90,
+      restTimeSeconds: wu.restTimeSeconds || 20,
+      isCustom: true
+    };
+    setWarmUpPresets((prev) => [newWu, ...prev]);
+    if (supabase) {
+      await supabase.from('warmup_presets').insert([{
+        id: newWu.id,
+        academy_id: DEFAULT_ACADEMY_ID,
+        name: newWu.warmUpName,
+        type: newWu.type,
+        description: newWu.description,
+        game_rules: newWu.gameRules || '',
+        constraints: newWu.constraints || '',
+        goals: newWu.goals || '',
+        round_count: newWu.roundCount,
+        round_time_seconds: newWu.roundTimeSeconds,
+        rest_time_seconds: newWu.restTimeSeconds,
+        is_custom: true
+      }]);
+    }
+    alert(`Warm-Up "${newWu.warmUpName}" saved to preset library!`);
   };
 
   const handleEditLessonFromHub = (plan: LessonPlan) => { setEditingLessonId(plan.id); setBuilderForm({ ...plan }); const scheduledMatch = schedule.find(s => s.assignedLessonId === plan.id); if (scheduledMatch) setTargetClassId(scheduledMatch.id); setActiveTab('builder'); };
@@ -488,7 +708,7 @@ export default function SubCadenceApp() {
     
     // Write Supabase
     if (supabase) {
-      await supabase.from('flow_routines').upsert({ id: finalFlow.id, title: finalFlow.title, concept: finalFlow.concept, starting_position: finalFlow.startingPosition, round_count: finalFlow.roundCount, round_time_seconds: finalFlow.roundTimeSeconds, rest_time_seconds: finalFlow.restTimeSeconds, nodes: finalFlow.nodes, is_public: finalFlow.isPublic });
+      await supabase.from('flow_routines').upsert({ id: finalFlow.id, academy_id: DEFAULT_ACADEMY_ID, title: finalFlow.title, concept: finalFlow.concept, starting_position: finalFlow.startingPosition, round_count: finalFlow.roundCount, round_time_seconds: finalFlow.roundTimeSeconds, rest_time_seconds: finalFlow.restTimeSeconds, nodes: finalFlow.nodes, is_public: finalFlow.isPublic });
     }
 
     setActiveFlowInStudio(BASELINE_FLOWS[0]); setIsEditingExistingFlow(false); setActiveTab('flows'); 
@@ -510,25 +730,68 @@ export default function SubCadenceApp() {
       const target = schedule.find(s => s.id === classId);
       if(target) {
         const payload = { ...target, ...updates };
-        await supabase.from('schedules').upsert({ id: payload.id, date_str: payload.dateStr, time: payload.time, title: payload.title, age_group: payload.ageGroup, duration_minutes: payload.durationMinutes, assigned_instructor_id: payload.assignedInstructorId, assigned_lesson_id: payload.assignedLessonId, post_class_notes: payload.postClassNotes, modifications_suggested: payload.modificationsSuggested });
+        const dbUpdates: any = {};
+        if (updates.dateStr !== undefined) dbUpdates.date_str = updates.dateStr;
+        if (updates.time !== undefined) dbUpdates.time_str = updates.time;
+        if (updates.title !== undefined) dbUpdates.title = updates.title;
+        if (updates.ageGroup !== undefined) dbUpdates.age_group = updates.ageGroup;
+        if (updates.durationMinutes !== undefined) dbUpdates.duration_minutes = updates.durationMinutes;
+        if (updates.assignedInstructorId !== undefined) {
+          dbUpdates.assigned_instructor_id = isValidUUID(updates.assignedInstructorId) ? updates.assignedInstructorId : null;
+        }
+        if (updates.assignedLessonId !== undefined) dbUpdates.assigned_lesson_id = updates.assignedLessonId;
+        if (updates.postClassNotes !== undefined) dbUpdates.post_class_notes = updates.postClassNotes;
+        if (updates.modificationsSuggested !== undefined) dbUpdates.modifications_suggested = updates.modificationsSuggested;
+        if (Object.keys(dbUpdates).length > 0) {
+          const { error } = await supabase.from('schedules').update(dbUpdates).eq('id', classId);
+          if (error) console.warn('Supabase schedule update error:', error.message);
+        }
       }
     }
   };
 
   const handleDeleteScheduledClass = async (id: string) => { 
     setSchedule(schedule.filter(s => s.id !== id)); 
-    if(supabase) await supabase.from('schedules').delete().eq('id', id);
+    if(supabase) {
+      const { error } = await supabase.from('schedules').delete().eq('id', id);
+      if (error) console.warn('Supabase schedule delete error:', error.message);
+    }
+  };
+
+  const handleDeleteLesson = async (id: string) => { 
+    setPlans(prev => prev.filter(p => p.id !== id)); 
+    if (selectedPlan?.id === id) {
+      const remaining = plans.filter(p => p.id !== id);
+      if (remaining.length > 0) setSelectedPlan(remaining[0]);
+    }
+    const affectedSchedules = schedule.filter(s => s.assignedLessonId === id);
+    if (affectedSchedules.length > 0) {
+      setSchedule(prev => prev.map(s => s.assignedLessonId === id ? { ...s, assignedLessonId: null } : s));
+    }
+    if (supabase) {
+      const { error } = await supabase.from('lessons').delete().eq('id', id);
+      if (error) console.warn('Supabase lesson delete error:', error.message);
+      for (const sc of affectedSchedules) {
+        const { error: schError } = await supabase.from('schedules').update({ assigned_lesson_id: null }).eq('id', sc.id);
+        if (schError) console.warn('Supabase schedule unassign notice:', schError.message);
+      }
+    }
   };
 
   // Class Templates Actions
   const handleSaveClassTemplate = (e: React.FormEvent) => {
     e.preventDefault();
     if (!templateFormData.name.trim()) return;
+    const duration = Number(templateFormData.durationMinutes) || 60;
+    const cleanedTemplate: ClassTemplate = {
+      ...templateFormData,
+      durationMinutes: duration,
+      id: isEditingTemplate ? templateFormData.id : `ct-${Date.now()}`
+    };
     if (isEditingTemplate) {
-      setClassTemplates(classTemplates.map(t => t.id === templateFormData.id ? templateFormData : t));
+      setClassTemplates(classTemplates.map(t => t.id === cleanedTemplate.id ? cleanedTemplate : t));
     } else {
-      const newT: ClassTemplate = { ...templateFormData, id: `ct-${Date.now()}` };
-      setClassTemplates([...classTemplates, newT]);
+      setClassTemplates([...classTemplates, cleanedTemplate]);
     }
     setTemplateFormData({ id: '', name: '', ageGroup: 'Adults', durationMinutes: 60 });
     setIsEditingTemplate(false);
@@ -557,18 +820,20 @@ export default function SubCadenceApp() {
 
     setSchedule([...schedule, newClass]);
     if (supabase) {
-      await supabase.from('schedules').insert({
+      const { error } = await supabase.from('schedules').insert([{
         id: newClass.id,
+        academy_id: DEFAULT_ACADEMY_ID,
         date_str: newClass.dateStr,
-        time: newClass.time,
+        time_str: newClass.time,
         title: newClass.title,
         age_group: newClass.ageGroup,
         duration_minutes: newClass.durationMinutes,
-        assigned_instructor_id: newClass.assignedInstructorId,
-        assigned_lesson_id: newClass.assignedLessonId,
+        assigned_instructor_id: isValidUUID(newClass.assignedInstructorId) ? newClass.assignedInstructorId : null,
+        assigned_lesson_id: newClass.assignedLessonId || null,
         post_class_notes: '',
         modifications_suggested: ''
-      });
+      }]);
+      if (error) console.warn('Supabase schedule insert error:', error.message);
     }
     setIsAddClassModalOpen(false);
     setNewClassLessonId('');
@@ -580,19 +845,20 @@ export default function SubCadenceApp() {
     const newWu: WarmUp = { ...newWarmUpForm, id: `wu-${Date.now()}`, isCustom: true };
     setWarmUpPresets([newWu, ...warmUpPresets]);
     if (supabase) {
-      await supabase.from('warmup_presets').insert({
+      await supabase.from('warmup_presets').insert([{
         id: newWu.id,
-        warm_up_name: newWu.warmUpName,
+        academy_id: DEFAULT_ACADEMY_ID,
+        name: newWu.warmUpName,
         type: newWu.type,
         description: newWu.description,
-        game_rules: newWu.gameRules,
-        constraints: newWu.constraints,
-        goals: newWu.goals,
+        game_rules: newWu.gameRules || '',
+        constraints: newWu.constraints || '',
+        goals: newWu.goals || '',
         round_count: newWu.roundCount,
         round_time_seconds: newWu.roundTimeSeconds,
         rest_time_seconds: newWu.restTimeSeconds,
         is_custom: true
-      });
+      }]);
     }
     setNewWarmUpForm({
       warmUpName: '', type: 'game', description: '', gameRules: '', constraints: '', goals: '', roundCount: 3, roundTimeSeconds: 90, restTimeSeconds: 20, isCustom: true
@@ -612,6 +878,7 @@ export default function SubCadenceApp() {
           ageGroup: builderForm.ageGroup,
           beltRank: builderForm.beltRank,
           totalDurationMinutes: targetDuration,
+          drillCount: Math.max(1, builderForm.drills.length),
         }),
       });
       if (!res.ok) throw new Error('Generation failed');
@@ -714,6 +981,7 @@ export default function SubCadenceApp() {
           allUniqueTags={allUniqueTags} plansByConcept={plansByConcept} collapsedConcepts={collapsedConcepts} toggleConceptCollapse={(c) => setCollapsedConcepts({...collapsedConcepts, [c]: !collapsedConcepts[c]})} 
           handleEditLessonFromHub={handleEditLessonFromHub} handleOpenScheduleForLesson={handleOpenScheduleForLesson} 
           loadPlanToMat={loadPlanToMat} filteredWarmUps={filteredWarmUps} applyPresetWarmUp={(wu) => setBuilderForm({...builderForm, warmUp: wu})} setActiveTab={setActiveTab} launchWarmUpOnly={launchWarmUpOnly}
+          plans={plans} coreConcepts={coreConcepts} handleDeleteLesson={handleDeleteLesson}
         />
       )}
 
@@ -757,8 +1025,8 @@ export default function SubCadenceApp() {
                 <div className={`p-4 rounded-2xl max-w-xl text-sm leading-relaxed ${msg.role === 'user' ? 'bg-emerald-600 text-white rounded-br-none' : 'bg-slate-900 border border-slate-800 text-slate-200 rounded-bl-none whitespace-pre-line'}`}>
                   {msg.content}
 
-                  {msg.actionPayload?.action === 'POPULATE_LESSON' && msg.actionPayload.lessonData && (
-                    <div className="mt-3 pt-3 border-t border-slate-800 flex justify-end">
+                  {msg.actionPayload?.lessonData && (
+                    <div className="mt-3 pt-3 border-t border-slate-800 flex flex-wrap gap-2 justify-end">
                       <button
                         onClick={() => {
                           const lData = msg.actionPayload!.lessonData;
@@ -771,6 +1039,12 @@ export default function SubCadenceApp() {
                             beltRank: lData.beltRank || prev.beltRank,
                             totalDurationMinutes: lData.totalDurationMinutes || prev.totalDurationMinutes,
                             tags: lData.tags || prev.tags,
+                            warmUp: lData.warmUp ? {
+                              ...BASELINE_WARMUPS[0],
+                              ...lData.warmUp,
+                              id: `ai-wu-${Date.now()}`,
+                              isCustom: true
+                            } : prev.warmUp,
                             drills: (lData.drills || []).map((d: any, idx: number) => ({
                               ...d,
                               id: `ai-msg-drill-${Date.now()}-${idx}`
@@ -779,27 +1053,70 @@ export default function SubCadenceApp() {
                           }));
                           setActiveTab('builder');
                         }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold transition shadow-sm border border-slate-700"
+                      >
+                        <ExternalLink size={13} className="text-emerald-400" /> Load into Lesson Builder
+                      </button>
+
+                      <button
+                        onClick={() => handleSaveChatLessonToHub(msg.actionPayload!.lessonData)}
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition shadow-md"
                       >
-                        <ExternalLink size={13} /> Load into Lesson Builder
+                        <FolderPlus size={13} /> Save to Curriculum Hub
+                      </button>
+
+                      <button
+                        onClick={() => handleScheduleChatLesson(msg.actionPayload!.lessonData)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition shadow-md"
+                      >
+                        <CalendarIcon size={13} /> Schedule Class on Calendar
                       </button>
                     </div>
                   )}
 
-                  {msg.actionPayload?.action === 'CREATE_CONCEPT' && msg.actionPayload.conceptData?.conceptName && (
-                    <div className="mt-3 pt-3 border-t border-slate-800 flex justify-end">
+                  {msg.actionPayload?.warmUpData && (
+                    <div className="mt-3 pt-3 border-t border-slate-800 flex flex-wrap gap-2 justify-end">
                       <button
                         onClick={() => {
-                          const cName = msg.actionPayload!.conceptData!.conceptName;
-                          if (!coreConcepts.includes(cName)) {
-                            setCoreConcepts([...coreConcepts, cName]);
-                            setBuilderForm((prev) => ({ ...prev, concept: cName }));
-                            alert(`Concept "${cName}" added to academy curriculum!`);
-                          }
+                          const wu = msg.actionPayload!.warmUpData;
+                          setBuilderForm((prev) => ({
+                            ...prev,
+                            warmUp: {
+                              ...BASELINE_WARMUPS[0],
+                              ...wu,
+                              id: `ai-wu-${Date.now()}`,
+                              isCustom: true
+                            }
+                          }));
+                          setActiveTab('builder');
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold transition shadow-sm border border-slate-700"
+                      >
+                        <ExternalLink size={13} className="text-orange-400" /> Load Warm-Up into Builder
+                      </button>
+
+                      <button
+                        onClick={() => handleSaveWarmUpPreset(msg.actionPayload!.warmUpData)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-orange-600 hover:bg-orange-500 text-white text-xs font-bold transition shadow-md"
+                      >
+                        <FolderPlus size={13} /> Save Preset to Library
+                      </button>
+                    </div>
+                  )}
+
+                  {msg.actionPayload?.conceptData?.conceptName && (
+                    <div className="mt-3 pt-3 border-t border-slate-800 flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex items-center gap-1.5 text-xs text-emerald-400 font-bold">
+                        <CheckCircle2 size={14} /> Added &quot;{msg.actionPayload.conceptData.conceptName}&quot; to Curriculum Hub
+                      </div>
+                      <button
+                        onClick={() => {
+                          setBuilderForm((prev) => ({ ...prev, concept: msg.actionPayload!.conceptData!.conceptName }));
+                          setActiveTab('builder');
                         }}
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold transition shadow-md"
                       >
-                        <FolderPlus size={13} /> Add Concept to Hub
+                        <ExternalLink size={13} /> Open in Lesson Builder
                       </button>
                     </div>
                   )}
@@ -837,6 +1154,14 @@ export default function SubCadenceApp() {
                 });
 
                 const data = await res.json();
+
+                if (data.conceptData?.conceptName) {
+                  const cName = data.conceptData.conceptName.trim();
+                  if (cName) {
+                    setCoreConcepts((prev) => prev.includes(cName) ? prev : [...prev, cName]);
+                  }
+                }
+
                 const assistantMsg: ChatMessage = {
                   id: `a-${Date.now()}`,
                   role: 'assistant',
@@ -844,6 +1169,7 @@ export default function SubCadenceApp() {
                   actionPayload: data.action ? {
                     action: data.action,
                     conceptData: data.conceptData,
+                    warmUpData: data.warmUpData,
                     lessonData: data.lessonData
                   } : undefined
                 };
@@ -1051,8 +1377,19 @@ export default function SubCadenceApp() {
                   min="15" 
                   max="180" 
                   placeholder="Duration (Minutes)" 
-                  value={templateFormData.durationMinutes} 
-                  onChange={(e) => setTemplateFormData({ ...templateFormData, durationMinutes: parseInt(e.target.value) || 60 })} 
+                  value={templateFormData.durationMinutes || ''} 
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setTemplateFormData({
+                      ...templateFormData,
+                      durationMinutes: val === '' ? ('' as any) : parseInt(val, 10)
+                    });
+                  }}
+                  onBlur={() => {
+                    if (!templateFormData.durationMinutes || isNaN(Number(templateFormData.durationMinutes))) {
+                      setTemplateFormData({ ...templateFormData, durationMinutes: 60 });
+                    }
+                  }}
                   className="w-32 bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white" 
                 />
                 <button type="submit" className="px-4 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white">
@@ -1103,8 +1440,48 @@ export default function SubCadenceApp() {
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-400 uppercase">Start Time</label>
-                <input type="text" required placeholder="06:00 PM" value={newClassTime} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewClassTime(e.target.value)} className="w-full mt-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white" />
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-slate-400 uppercase">Start Time</label>
+                  <span className="text-[11px] text-emerald-400 font-mono font-bold">{newClassTime}</span>
+                </div>
+                <div className="flex items-center gap-2 mt-1 bg-slate-950 border border-slate-800 rounded-xl p-1.5 focus-within:border-emerald-500">
+                  <select
+                    value={parseTimeString(newClassTime).hour}
+                    onChange={(e) => {
+                      const { minute, period } = parseTimeString(newClassTime);
+                      setNewClassTime(`${e.target.value}:${minute} ${period}`);
+                    }}
+                    className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-2 py-1.5 text-sm text-white font-mono text-center cursor-pointer focus:outline-none focus:border-emerald-500"
+                  >
+                    {Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0')).map(h => (
+                      <option key={h} value={h}>{h}</option>
+                    ))}
+                  </select>
+                  <span className="text-base font-black text-slate-400 select-none px-0.5">:</span>
+                  <select
+                    value={parseTimeString(newClassTime).minute}
+                    onChange={(e) => {
+                      const { hour, period } = parseTimeString(newClassTime);
+                      setNewClassTime(`${hour}:${e.target.value} ${period}`);
+                    }}
+                    className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-2 py-1.5 text-sm text-white font-mono text-center cursor-pointer focus:outline-none focus:border-emerald-500"
+                  >
+                    {['00', '05', '10', '15', '20', '25', '30', '35', '40', '45', '50', '55'].map(m => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={parseTimeString(newClassTime).period}
+                    onChange={(e) => {
+                      const { hour, minute } = parseTimeString(newClassTime);
+                      setNewClassTime(`${hour}:${minute} ${e.target.value}`);
+                    }}
+                    className="w-20 bg-slate-900 border border-slate-800 rounded-lg px-2 py-1.5 text-sm font-bold text-white text-center cursor-pointer focus:outline-none focus:border-emerald-500"
+                  >
+                    <option value="AM">AM</option>
+                    <option value="PM">PM</option>
+                  </select>
+                </div>
               </div>
 
               <div>
